@@ -84,9 +84,16 @@ export default function PistonLawnHomeScreen() {
       return isSameDay(slotDate, date);
     });
 
+    // FIXED: Sort slots so booked items (isReserved === true) come first (a - b layout logic)
+    const sortedDaySlots = [...daySlots].sort((a, b) => {
+      const aBooked = a.isReserved || !!a.clientName;
+      const bBooked = b.isReserved || !!b.clientName;
+      if (aBooked && !bBooked) return -1;
+      if (!aBooked && bBooked) return 1;
+      return 0;
+    });
+
     const isTodayActive = isSameDay(date, today);
-    
-    // Grab the daily broadcast note text from the first slot matching this day if it exists
     const dayNoteText = daySlots.find(s => s.dailyNote)?.dailyNote;
 
     return (
@@ -107,7 +114,7 @@ export default function PistonLawnHomeScreen() {
             </span>
           </div>
 
-          {/* --- NEW LIVE BROADCAST NOTE BADGE DISPLAY --- */}
+          {/* Public Broadcast Note Badge */}
           {dayNoteText && (
             <div className="text-[11px] bg-amber-50 text-amber-800 border border-amber-200 rounded px-2 py-1 font-semibold shadow-inner mt-1 max-w-[220px]">
               📌 {dayNoteText}
@@ -115,13 +122,13 @@ export default function PistonLawnHomeScreen() {
           )}
         </div>
 
-        {/* Dynamic Slots & Bookings Stream Feed */}
+        {/* Dynamic Slots & Bookings Stream Feed (Booked first, open after) */}
         <div className="flex-1 pt-1">
-          {daySlots.length === 0 ? (
+          {sortedDaySlots.length === 0 ? (
             <span className="text-sm italic text-gray-400">No slots available for this date</span>
           ) : (
             <div className="flex flex-wrap gap-2">
-              {daySlots.map((slot) => {
+              {sortedDaySlots.map((slot) => {
                 const isBooked = !!slot.clientName || slot.isReserved;
                 
                 if (isBooked) {
@@ -173,7 +180,7 @@ export default function PistonLawnHomeScreen() {
         )}
 
         {/* Timeline Divider Separation Banner */}
-        <div className="relative flex py-2 items-center">
+        <div className="relative flex py-4 items-center">
           <div className="flex-grow border-t border-gray-300"></div>
           <span className="flex-shrink mx-4 text-xs font-bold tracking-widest text-gray-400 uppercase">Live Master Cut Schedule</span>
           <div className="flex-grow border-t border-gray-300"></div>

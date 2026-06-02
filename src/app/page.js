@@ -52,13 +52,11 @@ export default function PistonLawnHomeScreen() {
       });
 
       setBookingSuccess(true);
-      // Reset form states and close modal
       setClientName('');
       setClientPhone('');
       setClientAddress('');
       setSelectedSlot(null);
       
-      // Auto-clear success message alert banner after 5 seconds
       setTimeout(() => setBookingSuccess(false), 5000);
     } catch (error) {
       console.error("Error saving booking: ", error);
@@ -72,7 +70,6 @@ export default function PistonLawnHomeScreen() {
   const endDate = addDays(today, 22);
   const dateRange = eachDayOfInterval({ start: startDate, end: endDate });
 
-  // Filter schedules into history vs active outlook arrays
   const pastDays = dateRange.filter(date => isBefore(date, today) && !isSameDay(date, today));
   const currentAndFutureDays = dateRange.filter(date => !isBefore(date, today) || isSameDay(date, today));
 
@@ -88,26 +85,38 @@ export default function PistonLawnHomeScreen() {
     });
 
     const isTodayActive = isSameDay(date, today);
+    
+    // Grab the daily broadcast note text from the first slot matching this day if it exists
+    const dayNoteText = daySlots.find(s => s.dailyNote)?.dailyNote;
 
     return (
       <div 
         key={date.toString()} 
         className={`p-4 rounded-xl bg-white shadow-sm border transition-all ${
           isTodayActive ? 'border-green-500 bg-green-50/10 ring-1 ring-green-400' : 'border-gray-200'
-        } flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3`}
+        } flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3`}
       >
         {/* Date / Day Display */}
-        <div className="min-w-[160px]">
-          <span className="font-bold text-gray-900 block text-base">
-            {format(date, 'EEEE')}
-          </span>
-          <span className="text-sm text-gray-500 font-medium">
-            {format(date, 'MMM d, yyyy')} {isTodayActive && <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full ml-1">Today</span>}
-          </span>
+        <div className="min-w-[180px] space-y-1">
+          <div>
+            <span className="font-bold text-gray-900 block text-base">
+              {format(date, 'EEEE')}
+            </span>
+            <span className="text-sm text-gray-500 font-medium">
+              {format(date, 'MMM d, yyyy')} {isTodayActive && <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full ml-1">Today</span>}
+            </span>
+          </div>
+
+          {/* --- NEW LIVE BROADCAST NOTE BADGE DISPLAY --- */}
+          {dayNoteText && (
+            <div className="text-[11px] bg-amber-50 text-amber-800 border border-amber-200 rounded px-2 py-1 font-semibold shadow-inner mt-1 max-w-[220px]">
+              📌 {dayNoteText}
+            </div>
+          )}
         </div>
 
         {/* Dynamic Slots & Bookings Stream Feed */}
-        <div className="flex-1">
+        <div className="flex-1 pt-1">
           {daySlots.length === 0 ? (
             <span className="text-sm italic text-gray-400">No slots available for this date</span>
           ) : (
@@ -202,7 +211,7 @@ export default function PistonLawnHomeScreen() {
 
       </div>
 
-      {/* --- POP-UP MODAL WINDOW OVERLAY --- */}
+      {/* POP-UP MODAL WINDOW OVERLAY */}
       {selectedSlot && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-xl border border-gray-100 animate-scale-up">

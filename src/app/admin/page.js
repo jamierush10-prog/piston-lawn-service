@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, onSnapshot, query, doc, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { format, subDays, addDays, eachDayOfInterval, isSameDay, isBefore, startOfDay } from 'date-fns';
 
 export default function LawnScheduleDashboard() {
@@ -59,7 +59,8 @@ export default function LawnScheduleDashboard() {
         isReserved: false,
         clientName: '',
         clientPhone: '',
-        clientAddress: ''
+        clientAddress: '',
+        dailyNote: '' // Initialize with empty broadcast note
       });
       setStatusMessage(`Published slot for ${format(new Date(selectedDate + 'T00:00:00'), 'MMM d, yyyy')}!`);
       setSelectedDate('');
@@ -70,7 +71,19 @@ export default function LawnScheduleDashboard() {
     }
   };
 
-  // 4. Complete a job or purge an unneeded open availability window
+  // 4. Update the short broadcast note on the fly
+  const handleNoteChange = async (slotId, text) => {
+    try {
+      const slotRef = doc(db, 'slots', slotId);
+      await updateDoc(slotRef, {
+        dailyNote: text
+      });
+    } catch (error) {
+      console.error("Error saving note: ", error);
+    }
+  };
+
+  // 5. Complete a job or purge an unneeded open availability window
   const handleCompleteSlot = async (slotId, dateLabel, clientName) => {
     const confirmationPrompt = clientName 
       ? `Mark job for ${clientName} on ${dateLabel} as COMPLETE and clear it?`
@@ -86,7 +99,7 @@ export default function LawnScheduleDashboard() {
     }
   };
 
-  // 5. Generate rolling timeframes (-5 days to +22 days)
+  // 6. Generate rolling timeframes (-5 days to +22 days)
   const today = startOfDay(new Date());
   const startDate = subDays(today, 5);
   const endDate = addDays(today, 22);
@@ -126,7 +139,7 @@ export default function LawnScheduleDashboard() {
         </div>
 
         {/* Current matching items list inside database */}
-        <div className="flex-1 flex flex-col gap-2">
+        <div className="flex-1 flex flex-col gap-3">
           {daySlots.length === 0 ? (
             <span className="text-sm italic text-gray-400 pt-1">No appointments scheduled</span>
           ) : (
@@ -135,35 +148,51 @@ export default function LawnScheduleDashboard() {
               return (
                 <div 
                   key={slot.id} 
-                  className={`p-3.5 rounded-lg border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 text-sm ${
+                  className={`p-4 rounded-lg border flex flex-col gap-3 ${
                     isBooked 
                       ? 'bg-amber-50 text-amber-900 border-amber-200' 
                       : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                   }`}
                 >
-                  <div className="space-y-1">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <div className="font-bold text-base">
                       {isBooked ? `✂️ Scheduled Cut: ${slot.clientName}` : '🟢 Empty Open Availability Window'}
                     </div>
-                    {/* --- Displaying Phone and Address metrics to the Admin ONLY --- */}
-                    {isBooked && (
-                      <div className="text-xs text-gray-600 font-medium space-y-0.5 bg-white/60 p-2 rounded border border-amber-100">
-                        <p><span className="font-bold text-gray-700">Phone:</span> {slot.clientPhone || 'Not Provided'}</p>
-                        <p><span className="font-bold text-gray-700">Address:</span> {slot.clientAddress || 'Not Provided'}</p>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <button
-                    onClick={() => handleCompleteSlot(slot.id, formattedDateLabel, slot.clientName)}
-                    className={`text-xs px-3 py-1.5 rounded shadow-sm font-bold transition-colors self-start sm:self-center ${
-                      isBooked 
-                        ? 'bg-amber-600 text-white hover:bg-red-600' 
-                        : 'bg-white text-gray-700 border hover:bg-gray-100'
+                    
+                    <button
+                      onClick={() => handleCompleteSlot(slot.id, formattedDateLabel, slot.clientName)}
+                      className={`text-xs px-3 py-1.5 rounded shadow-sm font-bold transition-colors self-start sm:self-center ${
+                        isBooked 
+                          ? 'bg-amber-600 text-white hover:bg-red-600' 
+                          : 'bg-white text-gray-700 border hover:bg-gray-100'
                     }`}
-                  >
-                    {isBooked ? '✓ Complete Job' : '✕ Remove'}
-                  </button>
+                    >
+                      {isBooked ? '✓ Complete Job' : '✕ Remove'}
+                    </button>
+                  </div>
+
+                  {/* Client Metadata block */}
+                  {isBooked && (
+                    <div className="text-xs text-gray-600 font-medium space-y-0.5 bg-white/60 p-2 rounded border border-amber-100">
+                      <p><span className="font-bold text-gray-700">Phone:</span> {slot.clientPhone || 'Not Provided'}</p>
+                      <p><span className="font-bold text-gray-700">Address:</span> {slot.clientAddress || 'Not Provided'}</p>
+                    </div>
+                  )}
+
+                  {/* --- NEW LIVE DAY NOTE INPUT FIELD --- */}
+                  <div className="pt-1">
+                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
+                      📢 Public Broadcast Note (Seen on Home Page)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Weather delay, working Daphne area, etc..."
+                      value={slot.dailyNote || ''}
+                      onChange={(e) => handleNoteChange(slot.id, e.target.value)}
+                      className="w-full text-xs rounded border border-gray-300 p-2 bg-white text-gray-900 font-medium focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                    />
+                  </div>
+
                 </div>
               );
             })
@@ -177,7 +206,7 @@ export default function LawnScheduleDashboard() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
         <form onSubmit={handleLogin} className="w-full max-w-sm rounded-xl bg-white p-6 shadow-md border border-gray-200">
-          <h2 className="mb-4 text-xl font-bold text-gray-900">Piston Lawn Admin Gateway</h2>
+          <h2 className="mb-4 text-xl font-bold text-gray-900">Jamie Rush Admin Gateway</h2>
           <input
             type="password"
             placeholder="Enter Master Password"
@@ -201,7 +230,7 @@ export default function LawnScheduleDashboard() {
         {/* Header Block Control Component Area */}
         <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">Piston Lawn Operations Panel</h1>
+            <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">Jamie Rush Lawn Operations Panel</h1>
             <p className="text-sm text-gray-500 mt-0.5">Real-time scheduling management & lookahead dashboard engine.</p>
           </div>
           <form onSubmit={handleCreateSlot} className="flex gap-2 items-end sm:w-auto w-full">

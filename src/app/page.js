@@ -10,8 +10,12 @@ export default function PistonLawnHomeScreen() {
   const [slots, setSlots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState(null);
-  const [clientName, setClientName] = useState('');
   const [bookingSuccess, setBookingSuccess] = useState(false);
+
+  // Modal Form Inputs
+  const [clientName, setClientName] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
+  const [clientAddress, setClientAddress] = useState('');
 
   // Interface Layout States (Starts collapsed)
   const [isPastOpen, setIsPastOpen] = useState(false);
@@ -33,20 +37,25 @@ export default function PistonLawnHomeScreen() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Handle client booking submission
+  // 2. Handle client booking submission from modal
   const handleBookingSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedSlot || !clientName.trim()) return;
+    if (!selectedSlot || !clientName.trim() || !clientPhone.trim() || !clientAddress.trim()) return;
 
     try {
       const slotRef = doc(db, 'slots', selectedSlot.id);
       await updateDoc(slotRef, {
         isReserved: true,
-        clientName: clientName.trim()
+        clientName: clientName.trim(),
+        clientPhone: clientPhone.trim(),
+        clientAddress: clientAddress.trim()
       });
 
       setBookingSuccess(true);
+      // Reset form states and close modal
       setClientName('');
+      setClientPhone('');
+      setClientAddress('');
       setSelectedSlot(null);
       
       // Auto-clear success message alert banner after 5 seconds
@@ -71,8 +80,6 @@ export default function PistonLawnHomeScreen() {
   const renderDayRow = (date) => {
     const daySlots = slots.filter(slot => {
       if (!slot.date) return false;
-      
-      // Fixed: Appends 'T00:00:00' to plain date strings to force local timezone calculation
       const slotDate = slot.date.seconds 
         ? new Date(slot.date.seconds * 1000) 
         : new Date(slot.date + 'T00:00:00');
@@ -99,7 +106,7 @@ export default function PistonLawnHomeScreen() {
           </span>
         </div>
 
-        {/* Dynamic Slots & Bookings Stream Feed (No phone/address shown) */}
+        {/* Dynamic Slots & Bookings Stream Feed */}
         <div className="flex-1">
           {daySlots.length === 0 ? (
             <span className="text-sm italic text-gray-400">No slots available for this date</span>
@@ -116,19 +123,13 @@ export default function PistonLawnHomeScreen() {
                   );
                 }
 
-                const isSelected = selectedSlot?.id === slot.id;
-
                 return (
                   <button
                     key={slot.id}
                     onClick={() => setSelectedSlot(slot)}
-                    className={`text-xs px-3 py-1.5 rounded-lg font-bold border transition-all shadow-sm ${
-                      isSelected
-                        ? 'bg-emerald-700 text-white border-emerald-700 ring-2 ring-emerald-400 scale-105'
-                        : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
-                    }`}
+                    className="text-xs px-3 py-1.5 rounded-lg font-bold border transition-all shadow-sm bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
                   >
-                    {isSelected ? '⚡ Selected Slot' : '🟢 Available Open Slot'}
+                    🟢 Available Open Slot
                   </button>
                 );
               })}
@@ -140,9 +141,9 @@ export default function PistonLawnHomeScreen() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-800 pb-12 font-sans">
+    <div className="min-h-screen bg-gray-50 text-gray-800 pb-12 font-sans relative">
       
-      {/* Brand Hero Banner Header updated with new name and phone text */}
+      {/* Brand Hero Banner Header */}
       <div className="bg-emerald-700 text-white text-center py-10 px-4 shadow-sm mb-6">
         <h1 className="text-4xl font-extrabold tracking-tight">Jamie Rush Lawn Service</h1>
         <p className="text-emerald-100 text-lg mt-2 font-semibold">
@@ -162,45 +163,8 @@ export default function PistonLawnHomeScreen() {
           </div>
         )}
 
-        {/* Two Column Layout Block for Booking Interaction Workspace */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          
-          {/* Step 1 Prompt Card */}
-          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-center min-h-[140px]">
-            <h3 className="text-lg font-extrabold text-gray-900 mb-1">1. Select an Available Date</h3>
-            <p className="text-sm text-gray-500 font-medium">
-              {selectedSlot 
-                ? `Selected Target: ${format(new Date(selectedSlot.date + 'T00:00:00'), 'EEEE, MMM d')}`
-                : 'Choose an open green button from the tracking schedule list below.'}
-            </p>
-          </div>
-
-          {/* Step 2 Prompt/Input Card */}
-          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm min-h-[140px]">
-            <h3 className="text-lg font-extrabold text-gray-900 mb-2">2. Enter Details</h3>
-            {!selectedSlot ? (
-              <p className="text-sm text-gray-400 italic mt-4">Please choose an open date from the timeline list below.</p>
-            ) : (
-              <form onSubmit={handleBookingSubmit} className="flex gap-2 mt-2">
-                <input
-                  type="text"
-                  placeholder="Your Full Name"
-                  value={clientName}
-                  onChange={(e) => setClientName(e.target.value)}
-                  className="flex-1 rounded-lg border border-gray-300 p-2 text-sm text-gray-900 font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none"
-                  required
-                />
-                <button type="submit" className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm px-4 py-2 rounded-lg transition shadow-sm">
-                  Confirm Cut
-                </button>
-              </form>
-            )}
-          </div>
-
-        </div>
-
         {/* Timeline Divider Separation Banner */}
-        <div className="relative flex py-4 items-center">
+        <div className="relative flex py-2 items-center">
           <div className="flex-grow border-t border-gray-300"></div>
           <span className="flex-shrink mx-4 text-xs font-bold tracking-widest text-gray-400 uppercase">Live Master Cut Schedule</span>
           <div className="flex-grow border-t border-gray-300"></div>
@@ -237,6 +201,83 @@ export default function PistonLawnHomeScreen() {
         </div>
 
       </div>
+
+      {/* --- POP-UP MODAL WINDOW OVERLAY --- */}
+      {selectedSlot && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-xl border border-gray-100 animate-scale-up">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h3 className="text-xl font-extrabold text-gray-900">Enter Details</h3>
+                <p className="text-xs font-bold text-emerald-700 mt-0.5">
+                  Reserving: {format(new Date(selectedSlot.date + 'T00:00:00'), 'EEEE, MMM d, yyyy')}
+                </p>
+              </div>
+              <button 
+                onClick={() => setSelectedSlot(null)}
+                className="text-gray-400 hover:text-gray-600 font-bold text-lg p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleBookingSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1">Your Full Name</label>
+                <input
+                  type="text"
+                  placeholder="John Smith"
+                  value={clientName}
+                  onChange={(e) => setClientName(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 p-2.5 text-sm text-gray-900 font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1">Phone Number</label>
+                <input
+                  type="tel"
+                  placeholder="(251) 555-0199"
+                  value={clientPhone}
+                  onChange={(e) => setClientPhone(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 p-2.5 text-sm text-gray-900 font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1">Service Street Address</label>
+                <input
+                  type="text"
+                  placeholder="123 Main St, Daphne, AL"
+                  value={clientAddress}
+                  onChange={(e) => setClientAddress(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 p-2.5 text-sm text-gray-900 font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedSlot(null)}
+                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-sm py-2.5 rounded-lg transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm py-2.5 rounded-lg transition shadow-sm"
+                >
+                  Request Appointment
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { format, subDays, addDays, eachDayOfInterval, isSameDay, isBefore, startOfDay } from 'date-fns';
@@ -22,21 +23,27 @@ const DAPHNE_FORECAST = {
   '2026-06-14': { high: '84°F', rain: '99%' }
 };
 
-export default function PistonLawnHomeScreen() {
+// Main functional logic component
+function SearchableLawnSchedule() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   // Booking Workflow States
   const [slots, setSlots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [bookingSuccess, setBookingSuccess] = useState(false);
 
-  // Search Filter State
-  const [searchQuery, setSearchQuery] = useState('');
+  // Initialize Search Filter from URL parameter if it exists (?search=Rotella)
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
 
   // Modal Form Inputs
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [clientAddress, setClientAddress] = useState('');
-  const [isPastOpen, setIsPastOpen] = useState(false);
+  
+  // If a URL search param exists on initial load, auto-expand the 14-day history drawer
+  const [isPastOpen, setIsPastOpen] = useState(!!searchParams.get('search'));
 
   // 1. Listen to live database slots
   useEffect(() => {
@@ -55,7 +62,21 @@ export default function PistonLawnHomeScreen() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Handle client booking submission from modal
+  // 2. Dynamically push search text modifications straight up into the web address link parameters
+  const updateSearchParam = (value) => {
+    setSearchQuery(value);
+    const params = new URLSearchParams(window.location.search);
+    if (value.trim()) {
+      params.set('search', value);
+      setIsPastOpen(true); // Keep history visible when filtering
+    } else {
+      params.delete('search');
+    }
+    // Replaced standard window.history to utilize proper native Next.js routing streams
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
+
+  // 3. Handle client booking submission from modal
   const handleBookingSubmit = async (e) => {
     e.preventDefault();
     if (!selectedSlot || !clientName.trim() || !clientPhone.trim() || !clientAddress.trim()) return;
@@ -83,19 +104,17 @@ export default function PistonLawnHomeScreen() {
     }
   };
 
-  // 3. Generate rolling timeframes (-14 days to +22 days)
+  // 4. Generate rolling timeframes (-14 days to +22 days)
   const today = startOfDay(new Date());
   const startDate = subDays(today, 14);
   const endDate = addDays(today, 22);
   const dateRange = eachDayOfInterval({ start: startDate, end: endDate });
 
-  // 4. Helper function to check if a date has a matching client booking
+  // 5. Helper function to check if a date has a matching client booking
   const dateMatchesSearch = (date) => {
-    if (!searchQuery.trim()) return true; // If search is empty, show everything normally
-    
+    if (!searchQuery.trim()) return true;
     const queryClean = searchQuery.toLowerCase().trim();
     
-    // Find if any slots on this day match the typed client name partially
     return slots.some(slot => {
       if (!slot.date || !slot.clientName) return false;
       
@@ -109,7 +128,6 @@ export default function PistonLawnHomeScreen() {
     });
   };
 
-  // Separate dynamic time blocks and filter them by search query parameters
   const pastDays = dateRange.filter(date => isBefore(date, today) && !isSameDay(date, today) && dateMatchesSearch(date));
   const currentAndFutureDays = dateRange.filter(date => (!isBefore(date, today) || isSameDay(date, today)) && dateMatchesSearch(date));
 
@@ -127,7 +145,6 @@ export default function PistonLawnHomeScreen() {
       return isSameDay(slotDate, date);
     });
 
-    // Sort slots so Booked or Completed items come first, open buttons come last
     const sortedDaySlots = [...daySlots].sort((a, b) => {
       const aReserved = a.status === 'completed' || a.isReserved || !!a.clientName;
       const bReserved = b.status === 'completed' || b.isReserved || !!b.clientName;
@@ -241,7 +258,7 @@ export default function PistonLawnHomeScreen() {
           </div>
         )}
 
-        {/* --- NEW CLIENT SEARCH FILTER BAR WORKSPACE --- */}
+        {/* Filter input fires updated link path mutations */}
         <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
           <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
             🔍 Filter Timeline by Client Name
@@ -251,18 +268,12 @@ export default function PistonLawnHomeScreen() {
               type="text"
               placeholder="Type client name to look up scheduled or serviced dates (e.g. Herb)..."
               value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                // Automatically expand history view if they are actively searching past days
-                if (e.target.value.trim() !== '') {
-                  setIsPastOpen(true);
-                }
-              }}
+              onChange={(e) => updateSearchParam(e.target.value)}
               className="w-full rounded-lg border border-gray-300 p-2.5 text-sm text-gray-900 font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none pr-10"
             />
             {searchQuery && (
               <button
-                onClick={() => setSearchQuery('')}
+                onClick={() => updateSearchParam('')}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 font-bold text-sm"
               >
                 ✕
@@ -316,6 +327,7 @@ export default function PistonLawnHomeScreen() {
         </div>
       </div>
 
+      {/* POP-UP MODAL WINDOW OVERLAY */}
       {selectedSlot && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-xl border border-gray-100">
@@ -375,5 +387,18 @@ export default function PistonLawnHomeScreen() {
         </div>
       )}
     </div>
+  );
+}
+
+// Master Next.js default export wrapped in standard Suspense architecture to handle server-side pre-rendering boundaries safely
+export default function PistonLawnHomeScreenWrapper() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-400 font-medium italic">
+        Loading schedule parameters...
+      </div>
+    }>
+      <SearchableLawnSchedule />
+    </Suspense>
   );
 }

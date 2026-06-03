@@ -5,36 +5,34 @@ import { db } from '@/lib/firebase';
 import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { format, subDays, addDays, eachDayOfInterval, isSameDay, isBefore, startOfDay } from 'date-fns';
 
-// Static local forecast tracker for Daphne, AL (June 2026)
+// Verified Real Forecast Data for Daphne, AL
 const DAPHNE_FORECAST = {
-  '2026-06-02': { high: '86°F', rain: '40%' },
-  '2026-06-03': { high: '82°F', rain: '10%' },
-  '2026-06-04': { high: '81°F', rain: '10%' },
-  '2026-06-05': { high: '80°F', rain: '20%' },
-  '2026-06-06': { high: '79°F', rain: '65%' },
-  '2026-06-07': { high: '84°F', rain: '65%' },
-  '2026-06-08': { high: '85°F', rain: '25%' },
-  '2026-06-09': { high: '85°F', rain: '40%' },
-  '2026-06-10': { high: '87°F', rain: '40%' },
-  '2026-06-11': { high: '87°F', rain: '45%' }
+  '2026-06-02': { high: '85°F', rain: '74%' },
+  '2026-06-03': { high: '79°F', rain: '57%' },
+  '2026-06-04': { high: '83°F', rain: '0%' },
+  '2026-06-05': { high: '83°F', rain: '1%' },
+  '2026-06-06': { high: '81°F', rain: '56%' },
+  '2026-06-07': { high: '83°F', rain: '68%' },
+  '2026-06-08': { high: '84°F', rain: '60%' },
+  '2026-06-09': { high: '85°F', rain: '99%' },
+  '2026-06-10': { high: '85°F', rain: '99%' },
+  '2026-06-11': { high: '86°F', rain: '44%' },
+  '2026-06-12': { high: '87°F', rain: '55%' },
+  '2026-06-13': { high: '84°F', rain: '99%' },
+  '2026-06-14': { high: '84°F', rain: '99%' }
 };
 
 export default function PistonLawnHomeScreen() {
-  // Booking Workflow States
   const [slots, setSlots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [bookingSuccess, setBookingSuccess] = useState(false);
 
-  // Modal Form Inputs
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [clientAddress, setClientAddress] = useState('');
-
-  // Interface Layout States (Starts collapsed)
   const [isPastOpen, setIsPastOpen] = useState(false);
 
-  // 1. Listen to live database slots
   useEffect(() => {
     const q = query(collection(db, 'slots'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -51,7 +49,6 @@ export default function PistonLawnHomeScreen() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Handle client booking submission from modal
   const handleBookingSubmit = async (e) => {
     e.preventDefault();
     if (!selectedSlot || !clientName.trim() || !clientPhone.trim() || !clientAddress.trim()) return;
@@ -79,7 +76,6 @@ export default function PistonLawnHomeScreen() {
     }
   };
 
-  // 3. Generate rolling timeframes (-5 days to +22 days)
   const today = startOfDay(new Date());
   const startDate = subDays(today, 5);
   const endDate = addDays(today, 22);
@@ -88,9 +84,9 @@ export default function PistonLawnHomeScreen() {
   const pastDays = dateRange.filter(date => isBefore(date, today) && !isSameDay(date, today));
   const currentAndFutureDays = dateRange.filter(date => !isBefore(date, today) || isSameDay(date, today));
 
-  // Calendar Day Rows Generator UI
   const renderDayRow = (date) => {
-    const dateKey = format(date, 'yyyy-MM-DD');
+    // FIXED: Using lowercase 'yyyy-MM-dd' to match exact date tokens
+    const dateKey = format(date, 'yyyy-MM-dd');
     const weather = DAPHNE_FORECAST[dateKey];
 
     const daySlots = slots.filter(slot => {
@@ -102,7 +98,6 @@ export default function PistonLawnHomeScreen() {
       return isSameDay(slotDate, date);
     });
 
-    // Sort slots so Booked or Completed items come first, open buttons come last
     const sortedDaySlots = [...daySlots].sort((a, b) => {
       const aReserved = a.status === 'completed' || a.isReserved || !!a.clientName;
       const bReserved = b.status === 'completed' || b.isReserved || !!b.clientName;
@@ -121,7 +116,6 @@ export default function PistonLawnHomeScreen() {
           isTodayActive ? 'border-green-500 bg-green-50/10 ring-1 ring-green-400' : 'border-gray-200'
         } flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3`}
       >
-        {/* Date / Day Display */}
         <div className="min-w-[190px] space-y-1.5">
           <div>
             <span className="font-bold text-gray-900 block text-base">
@@ -132,7 +126,6 @@ export default function PistonLawnHomeScreen() {
             </span>
           </div>
 
-          {/* --- NEW WEATHER FEEDS INJECTOR BADGES --- */}
           {weather && (
             <div className="flex items-center gap-1.5 text-xs font-bold">
               <span className="text-red-700 bg-red-50 border border-red-100 px-2 py-0.5 rounded shadow-sm">
@@ -144,7 +137,6 @@ export default function PistonLawnHomeScreen() {
             </div>
           )}
 
-          {/* Public Broadcast Note Badge */}
           {dayNoteText && (
             <div className="text-[11px] bg-amber-50 text-amber-800 border border-amber-200 rounded px-2 py-1 font-semibold shadow-inner mt-1 max-w-[220px]">
               📌 {dayNoteText}
@@ -152,7 +144,6 @@ export default function PistonLawnHomeScreen() {
           )}
         </div>
 
-        {/* Dynamic Slots & Bookings Feed */}
         <div className="flex-1 pt-1">
           {sortedDaySlots.length === 0 ? (
             <span className="text-sm italic text-gray-400">No slots available for this date</span>
@@ -203,8 +194,6 @@ export default function PistonLawnHomeScreen() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 pb-12 font-sans relative">
-      
-      {/* Brand Hero Banner Header */}
       <div className="bg-emerald-700 text-white text-center py-10 px-4 shadow-sm mb-6">
         <h1 className="text-4xl font-extrabold tracking-tight">Jamie Rush Lawn Service</h1>
         <p className="text-emerald-100 text-lg mt-2 font-semibold">
@@ -216,22 +205,18 @@ export default function PistonLawnHomeScreen() {
       </div>
 
       <div className="max-w-4xl mx-auto px-4 space-y-6">
-
-        {/* Dynamic Success Alert */}
         {bookingSuccess && (
-          <div className="p-4 bg-emerald-100 border border-emerald-300 text-emerald-900 font-bold rounded-xl text-center shadow-sm animate-fade-in">
+          <div className="p-4 bg-emerald-100 border border-emerald-300 text-emerald-900 font-bold rounded-xl text-center shadow-sm">
             🎉 Appointment scheduled successfully! We'll see you then.
           </div>
         )}
 
-        {/* Timeline Divider Separation Banner */}
         <div className="relative flex py-4 items-center">
           <div className="flex-grow border-t border-gray-300"></div>
           <span className="flex-shrink mx-4 text-xs font-bold tracking-widest text-gray-400 uppercase">Live Master Cut Schedule</span>
           <div className="flex-grow border-t border-gray-300"></div>
         </div>
 
-        {/* Collapsible History Vault Drawer Section */}
         <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
           <button
             onClick={() => setIsPastOpen(!isPastOpen)}
@@ -250,7 +235,6 @@ export default function PistonLawnHomeScreen() {
           )}
         </div>
 
-        {/* Main Active 3-Week Schedule Feed Area */}
         <div className="space-y-3">
           {loading ? (
             <div className="p-12 text-center text-gray-400 font-medium italic bg-white rounded-xl border">
@@ -260,13 +244,11 @@ export default function PistonLawnHomeScreen() {
             currentAndFutureDays.map(renderDayRow)
           )}
         </div>
-
       </div>
 
-      {/* POP-UP MODAL WINDOW OVERLAY */}
       {selectedSlot && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-xl border border-gray-100 animate-scale-up">
+          <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-xl border border-gray-100">
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="text-xl font-extrabold text-gray-900">Enter Details</h3>
@@ -274,12 +256,7 @@ export default function PistonLawnHomeScreen() {
                   Reserving: {format(new Date(selectedSlot.date + 'T00:00:00'), 'EEEE, MMM d, yyyy')}
                 </p>
               </div>
-              <button 
-                onClick={() => setSelectedSlot(null)}
-                className="text-gray-400 hover:text-gray-600 font-bold text-lg p-1"
-              >
-                ✕
-              </button>
+              <button onClick={() => setSelectedSlot(null)} className="text-gray-400 hover:text-gray-600 font-bold text-lg p-1">✕</button>
             </div>
 
             <form onSubmit={handleBookingSubmit} className="space-y-4">
@@ -320,25 +297,13 @@ export default function PistonLawnHomeScreen() {
               </div>
 
               <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedSlot(null)}
-                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-sm py-2.5 rounded-lg transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm py-2.5 rounded-lg transition shadow-sm"
-                >
-                  Request Appointment
-                </button>
+                <button type="button" onClick={() => setSelectedSlot(null)} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-sm py-2.5 rounded-lg transition">Cancel</button>
+                <button type="submit" className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm py-2.5 rounded-lg transition shadow-sm">Request Appointment</button>
               </div>
             </form>
           </div>
         </div>
       )}
-
     </div>
   );
 }

@@ -23,16 +23,22 @@ const DAPHNE_FORECAST = {
 };
 
 export default function PistonLawnHomeScreen() {
+  // Booking Workflow States
   const [slots, setSlots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [bookingSuccess, setBookingSuccess] = useState(false);
 
+  // Search Filter State
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Modal Form Inputs
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [clientAddress, setClientAddress] = useState('');
   const [isPastOpen, setIsPastOpen] = useState(false);
 
+  // 1. Listen to live database slots
   useEffect(() => {
     const q = query(collection(db, 'slots'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -49,6 +55,7 @@ export default function PistonLawnHomeScreen() {
     return () => unsubscribe();
   }, []);
 
+  // 2. Handle client booking submission from modal
   const handleBookingSubmit = async (e) => {
     e.preventDefault();
     if (!selectedSlot || !clientName.trim() || !clientPhone.trim() || !clientAddress.trim()) return;
@@ -76,15 +83,37 @@ export default function PistonLawnHomeScreen() {
     }
   };
 
+  // 3. Generate rolling timeframes (-14 days to +22 days)
   const today = startOfDay(new Date());
-  // UPDATED: Shifted from subDays(today, 5) to subDays(today, 14)
   const startDate = subDays(today, 14);
   const endDate = addDays(today, 22);
   const dateRange = eachDayOfInterval({ start: startDate, end: endDate });
 
-  const pastDays = dateRange.filter(date => isBefore(date, today) && !isSameDay(date, today));
-  const currentAndFutureDays = dateRange.filter(date => !isBefore(date, today) || isSameDay(date, today));
+  // 4. Helper function to check if a date has a matching client booking
+  const dateMatchesSearch = (date) => {
+    if (!searchQuery.trim()) return true; // If search is empty, show everything normally
+    
+    const queryClean = searchQuery.toLowerCase().trim();
+    
+    // Find if any slots on this day match the typed client name partially
+    return slots.some(slot => {
+      if (!slot.date || !slot.clientName) return false;
+      
+      const slotDate = slot.date.seconds 
+        ? new Date(slot.date.seconds * 1000) 
+        : new Date(slot.date + 'T00:00:00');
+        
+      if (!isSameDay(slotDate, date)) return false;
+      
+      return slot.clientName.toLowerCase().includes(queryClean);
+    });
+  };
 
+  // Separate dynamic time blocks and filter them by search query parameters
+  const pastDays = dateRange.filter(date => isBefore(date, today) && !isSameDay(date, today) && dateMatchesSearch(date));
+  const currentAndFutureDays = dateRange.filter(date => (!isBefore(date, today) || isSameDay(date, today)) && dateMatchesSearch(date));
+
+  // Calendar Day Rows Generator UI
   const renderDayRow = (date) => {
     const dateKey = format(date, 'yyyy-MM-dd');
     const weather = DAPHNE_FORECAST[dateKey];
@@ -98,6 +127,7 @@ export default function PistonLawnHomeScreen() {
       return isSameDay(slotDate, date);
     });
 
+    // Sort slots so Booked or Completed items come first, open buttons come last
     const sortedDaySlots = [...daySlots].sort((a, b) => {
       const aReserved = a.status === 'completed' || a.isReserved || !!a.clientName;
       const bReserved = b.status === 'completed' || b.isReserved || !!b.clientName;
@@ -211,13 +241,42 @@ export default function PistonLawnHomeScreen() {
           </div>
         )}
 
-        <div className="relative flex py-4 items-center">
+        {/* --- NEW CLIENT SEARCH FILTER BAR WORKSPACE --- */}
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+          <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
+            🔍 Filter Timeline by Client Name
+          </label>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Type client name to look up scheduled or serviced dates (e.g. Herb)..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                // Automatically expand history view if they are actively searching past days
+                if (e.target.value.trim() !== '') {
+                  setIsPastOpen(true);
+                }
+              }}
+              className="w-full rounded-lg border border-gray-300 p-2.5 text-sm text-gray-900 font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none pr-10"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 font-bold text-sm"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="relative flex py-2 items-center">
           <div className="flex-grow border-t border-gray-300"></div>
           <span className="flex-shrink mx-4 text-xs font-bold tracking-widest text-gray-400 uppercase">Live Master Cut Schedule</span>
           <div className="flex-grow border-t border-gray-300"></div>
         </div>
 
-        {/* UPDATED: Displays history labels for the last 14 days */}
         <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
           <button
             onClick={() => setIsPastOpen(!isPastOpen)}
@@ -225,13 +284,19 @@ export default function PistonLawnHomeScreen() {
           >
             <span>{isPastOpen ? '▼ Hide Prior 14 Days History' : '► Show Prior 14 Days History'}</span>
             <span className="text-xs text-gray-500 bg-white border px-2 py-0.5 rounded-full shadow-sm font-semibold">
-              {pastDays.length} Days Tucked Away
+              {pastDays.length} Days Visible
             </span>
           </button>
 
           {isPastOpen && (
             <div className="mt-4 space-y-3 pl-3 border-l-4 border-gray-300">
-              {loading ? <p className="text-sm italic text-gray-400">Syncing database historical feeds...</p> : pastDays.map(renderDayRow)}
+              {loading ? (
+                <p className="text-sm italic text-gray-400">Syncing database historical feeds...</p>
+              ) : pastDays.length === 0 ? (
+                <p className="text-sm italic text-gray-400 p-2">No matching historical records found.</p>
+              ) : (
+                pastDays.map(renderDayRow)
+              )}
             </div>
           )}
         </div>
@@ -240,6 +305,10 @@ export default function PistonLawnHomeScreen() {
           {loading ? (
             <div className="p-12 text-center text-gray-400 font-medium italic bg-white rounded-xl border">
               Loading active live timeline records...
+            </div>
+          ) : currentAndFutureDays.length === 0 ? (
+            <div className="p-8 text-center text-gray-400 font-medium italic bg-white rounded-xl border">
+              No matching scheduled slots found in the upcoming lookout horizon.
             </div>
           ) : (
             currentAndFutureDays.map(renderDayRow)

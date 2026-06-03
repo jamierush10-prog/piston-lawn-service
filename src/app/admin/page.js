@@ -57,7 +57,7 @@ export default function LawnScheduleDashboard() {
       await addDoc(collection(db, 'slots'), {
         date: selectedDate,
         isReserved: false,
-        status: 'open', // added explicit status tracking
+        status: 'open',
         clientName: '',
         clientPhone: '',
         clientAddress: '',
@@ -84,10 +84,9 @@ export default function LawnScheduleDashboard() {
     }
   };
 
-  // 5. FIXED: Complete a job (updates status to 'completed') OR delete unbooked empty slots
+  // 5. Complete a job (updates status to 'completed') OR delete unbooked empty slots
   const handleCompleteSlot = async (slotId, dateLabel, clientName) => {
     if (clientName) {
-      // If it's a booked service, flip its status instead of deleting it
       if (window.confirm(`Mark job for ${clientName} on ${dateLabel} as COMPLETE?`)) {
         try {
           const slotRef = doc(db, 'slots', slotId);
@@ -100,7 +99,6 @@ export default function LawnScheduleDashboard() {
         }
       }
     } else {
-      // If it's an empty open slot, delete it entirely to purge it from calendar list view
       if (window.confirm(`Remove open availability slot on ${dateLabel}?`)) {
         try {
           await deleteDoc(doc(db, 'slots', slotId));
@@ -112,9 +110,10 @@ export default function LawnScheduleDashboard() {
     }
   };
 
-  // 6. Generate rolling timeframes (-5 days to +22 days)
+  // 6. Generate rolling timeframes (-14 days to +22 days)
   const today = startOfDay(new Date());
-  const startDate = subDays(today, 5);
+  // UPDATED: Shifted from subDays(today, 5) to subDays(today, 14) to match home screen
+  const startDate = subDays(today, 14);
   const endDate = addDays(today, 22);
   const dateRange = eachDayOfInterval({ start: startDate, end: endDate });
 
@@ -280,13 +279,13 @@ export default function LawnScheduleDashboard() {
           </div>
         )}
 
-        {/* Collapsible Vault Section */}
+        {/* UPDATED: Displays history labels for the last 14 days */}
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
           <button
             onClick={() => setIsPastOpen(!isPastOpen)}
             className="w-full flex items-center justify-between p-2 bg-gray-100 hover:bg-gray-200 transition-colors rounded-lg text-sm font-bold text-gray-700"
           >
-            <span>{isPastOpen ? '▼ Hide Past 5 Days (History Workspace)' : '► Show Past 5 Days (History Workspace)'}</span>
+            <span>{isPastOpen ? '▼ Hide Past 14 Days (History Workspace)' : '► Show Past 14 Days (History Workspace)'}</span>
             <span className="text-xs text-gray-500 bg-white border px-2 py-0.5 rounded-full shadow-sm font-semibold">
               {pastDays.length} Days Hidden
             </span>

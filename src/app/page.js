@@ -77,7 +77,8 @@ export default function PistonLawnHomeScreen() {
   };
 
   const today = startOfDay(new Date());
-  const startDate = subDays(today, 5);
+  // UPDATED: Shifted from subDays(today, 5) to subDays(today, 14)
+  const startDate = subDays(today, 14);
   const endDate = addDays(today, 22);
   const dateRange = eachDayOfInterval({ start: startDate, end: endDate });
 
@@ -85,7 +86,6 @@ export default function PistonLawnHomeScreen() {
   const currentAndFutureDays = dateRange.filter(date => !isBefore(date, today) || isSameDay(date, today));
 
   const renderDayRow = (date) => {
-    // FIXED: Using lowercase 'yyyy-MM-dd' to match exact date tokens
     const dateKey = format(date, 'yyyy-MM-dd');
     const weather = DAPHNE_FORECAST[dateKey];
 
@@ -217,12 +217,13 @@ export default function PistonLawnHomeScreen() {
           <div className="flex-grow border-t border-gray-300"></div>
         </div>
 
+        {/* UPDATED: Displays history labels for the last 14 days */}
         <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
           <button
             onClick={() => setIsPastOpen(!isPastOpen)}
             className="w-full flex items-center justify-between p-2.5 bg-gray-100 hover:bg-gray-200 transition-colors rounded-lg text-sm font-bold text-gray-700"
           >
-            <span>{isPastOpen ? '▼ Hide Prior 5 Days History' : '► Show Prior 5 Days History'}</span>
+            <span>{isPastOpen ? '▼ Hide Prior 14 Days History' : '► Show Prior 14 Days History'}</span>
             <span className="text-xs text-gray-500 bg-white border px-2 py-0.5 rounded-full shadow-sm font-semibold">
               {pastDays.length} Days Tucked Away
             </span>

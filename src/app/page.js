@@ -5,6 +5,20 @@ import { db } from '@/lib/firebase';
 import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { format, subDays, addDays, eachDayOfInterval, isSameDay, isBefore, startOfDay } from 'date-fns';
 
+// Static local forecast tracker for Daphne, AL (June 2026)
+const DAPHNE_FORECAST = {
+  '2026-06-02': { high: '86°F', rain: '40%' },
+  '2026-06-03': { high: '82°F', rain: '10%' },
+  '2026-06-04': { high: '81°F', rain: '10%' },
+  '2026-06-05': { high: '80°F', rain: '20%' },
+  '2026-06-06': { high: '79°F', rain: '65%' },
+  '2026-06-07': { high: '84°F', rain: '65%' },
+  '2026-06-08': { high: '85°F', rain: '25%' },
+  '2026-06-09': { high: '85°F', rain: '40%' },
+  '2026-06-10': { high: '87°F', rain: '40%' },
+  '2026-06-11': { high: '87°F', rain: '45%' }
+};
+
 export default function PistonLawnHomeScreen() {
   // Booking Workflow States
   const [slots, setSlots] = useState([]);
@@ -76,6 +90,9 @@ export default function PistonLawnHomeScreen() {
 
   // Calendar Day Rows Generator UI
   const renderDayRow = (date) => {
+    const dateKey = format(date, 'yyyy-MM-DD');
+    const weather = DAPHNE_FORECAST[dateKey];
+
     const daySlots = slots.filter(slot => {
       if (!slot.date) return false;
       const slotDate = slot.date.seconds 
@@ -105,7 +122,7 @@ export default function PistonLawnHomeScreen() {
         } flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3`}
       >
         {/* Date / Day Display */}
-        <div className="min-w-[180px] space-y-1">
+        <div className="min-w-[190px] space-y-1.5">
           <div>
             <span className="font-bold text-gray-900 block text-base">
               {format(date, 'EEEE')}
@@ -114,6 +131,18 @@ export default function PistonLawnHomeScreen() {
               {format(date, 'MMM d, yyyy')} {isTodayActive && <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full ml-1">Today</span>}
             </span>
           </div>
+
+          {/* --- NEW WEATHER FEEDS INJECTOR BADGES --- */}
+          {weather && (
+            <div className="flex items-center gap-1.5 text-xs font-bold">
+              <span className="text-red-700 bg-red-50 border border-red-100 px-2 py-0.5 rounded shadow-sm">
+                ☀️ High: {weather.high}
+              </span>
+              <span className="text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded shadow-sm">
+                💧 Rain: {weather.rain}
+              </span>
+            </div>
+          )}
 
           {/* Public Broadcast Note Badge */}
           {dayNoteText && (
@@ -133,7 +162,6 @@ export default function PistonLawnHomeScreen() {
                 const isCompleted = slot.status === 'completed';
                 const isBooked = !!slot.clientName || slot.isReserved;
                 
-                // --- FIXED: Render Black background badge with white text and green check mark if Completed ---
                 if (isCompleted) {
                   return (
                     <div 
@@ -145,7 +173,6 @@ export default function PistonLawnHomeScreen() {
                   );
                 }
 
-                // Render normal gray locked badge if Booked but not completed yet
                 if (isBooked) {
                   return (
                     <div 
@@ -157,7 +184,6 @@ export default function PistonLawnHomeScreen() {
                   );
                 }
 
-                // Otherwise render open button
                 return (
                   <button
                     key={slot.id}

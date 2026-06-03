@@ -24,7 +24,6 @@ function SearchableLawnSchedule() {
   const [clientPhone, setClientPhone] = useState('');
   const [clientAddress, setClientAddress] = useState('');
   
-  // If a URL search param exists on initial load, auto-expand the 14-day history drawer
   const [isPastOpen, setIsPastOpen] = useState(!!searchParams.get('search'));
 
   // 1. Listen to live database slots
@@ -133,21 +132,29 @@ function SearchableLawnSchedule() {
 
     const isTodayActive = isSameDay(date, today);
     const dayNoteText = daySlots.find(s => s.dailyNote)?.dailyNote;
+    
+    // Check if any slot allocated on this day is currently marked as a rainout delay
+    const isDayRainout = daySlots.some(s => s.isRainout);
 
     return (
       <div 
         key={date.toString()} 
-        className={`p-4 rounded-xl bg-white shadow-sm border transition-all ${
-          isTodayActive ? 'border-green-500 bg-green-50/10 ring-1 ring-green-400' : 'border-gray-200'
-        } flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3`}
+        className={`p-4 rounded-xl shadow-sm border transition-all flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 ${
+          isDayRainout
+            ? 'bg-blue-50/60 border-blue-300 ring-1 ring-blue-200' // --- FIXED: Highlight row soft blue if checked Rainout ---
+            : isTodayActive 
+              ? 'border-green-500 bg-green-50/10 ring-1 ring-green-400' 
+              : 'border-gray-200 bg-white'
+        }`}
       >
         <div className="min-w-[190px] space-y-1.5">
           <div>
-            <span className="font-bold text-gray-900 block text-base">
+            <span className="font-bold text-gray-900 block text-base flex items-center gap-1.5">
               {format(date, 'EEEE')}
+              {isDayRainout && <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full bg-blue-600 text-white uppercase tracking-wider animate-pulse">Rainout</span>}
             </span>
             <span className="text-sm text-gray-500 font-medium">
-              {format(date, 'MMM d, yyyy')} {isTodayActive && <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full ml-1">Today</span>}
+              {format(date, 'MMM d, yyyy')} {isTodayActive && !isDayRainout && <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full ml-1">Today</span>}
             </span>
           </div>
 
@@ -159,7 +166,7 @@ function SearchableLawnSchedule() {
         </div>
 
         <div className="flex-1 pt-1">
-          {sortedDaySlots.length === 0 ? (
+          {daySlots.length === 0 ? (
             <span className="text-sm italic text-gray-400">No slots available for this date</span>
           ) : (
             <div className="flex flex-wrap gap-2">
@@ -193,7 +200,11 @@ function SearchableLawnSchedule() {
                   <button
                     key={slot.id}
                     onClick={() => setSelectedSlot(slot)}
-                    className="text-xs px-3 py-1.5 rounded-lg font-bold border transition-all shadow-sm bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
+                    className={`text-xs px-3 py-1.5 rounded-lg font-bold border transition-all shadow-sm ${
+                      isDayRainout
+                        ? 'bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-200'
+                        : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                    }`}
                   >
                     🟢 Available Open Slot
                   </button>

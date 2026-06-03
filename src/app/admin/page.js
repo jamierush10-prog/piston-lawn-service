@@ -61,7 +61,8 @@ export default function LawnScheduleDashboard() {
         clientName: '',
         clientPhone: '',
         clientAddress: '',
-        dailyNote: '' 
+        dailyNote: '',
+        isRainout: false // Initialize rainout status as false
       });
       setStatusMessage(`Published slot for ${format(new Date(selectedDate + 'T00:00:00'), 'MMM d, yyyy')}!`);
       setSelectedDate('');
@@ -84,7 +85,19 @@ export default function LawnScheduleDashboard() {
     }
   };
 
-  // 5. Complete a job (updates status to 'completed') OR delete unbooked empty slots
+  // 5. NEW: Toggle Rainout Checkbox state
+  const handleRainoutToggle = async (slotId, currentSetting) => {
+    try {
+      const slotRef = doc(db, 'slots', slotId);
+      await updateDoc(slotRef, {
+        isRainout: !currentSetting
+      });
+    } catch (error) {
+      console.error("Error updating rainout status: ", error);
+    }
+  };
+
+  // 6. Complete a job (updates status to 'completed') OR delete unbooked empty slots
   const handleCompleteSlot = async (slotId, dateLabel, clientName) => {
     if (clientName) {
       if (window.confirm(`Mark job for ${clientName} on ${dateLabel} as COMPLETE?`)) {
@@ -110,9 +123,8 @@ export default function LawnScheduleDashboard() {
     }
   };
 
-  // 6. Generate rolling timeframes (-14 days to +22 days)
+  // 7. Generate rolling timeframes (-14 days to +22 days)
   const today = startOfDay(new Date());
-  // UPDATED: Shifted from subDays(today, 5) to subDays(today, 14) to match home screen
   const startDate = subDays(today, 14);
   const endDate = addDays(today, 22);
   const dateRange = eachDayOfInterval({ start: startDate, end: endDate });
@@ -163,20 +175,26 @@ export default function LawnScheduleDashboard() {
                 <div 
                   key={slot.id} 
                   className={`p-4 rounded-lg border flex flex-col gap-3 ${
-                    isCompleted
-                      ? 'bg-gray-100 text-gray-700 border-gray-300 opacity-75'
-                      : isBooked 
-                        ? 'bg-amber-50 text-amber-900 border-amber-200' 
-                        : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    slot.isRainout
+                      ? 'bg-blue-50/70 border-blue-200 text-blue-900' // Visual indicator on admin if checked
+                      : isCompleted
+                        ? 'bg-gray-100 text-gray-700 border-gray-300 opacity-75'
+                        : isBooked 
+                          ? 'bg-amber-50 text-amber-900 border-amber-200' 
+                          : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                   }`}
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                    <div className="font-bold text-base">
-                      {isCompleted 
-                        ? `✅ Completed Cut: ${slot.clientName}` 
-                        : isBooked 
-                          ? `✂️ Scheduled Cut: ${slot.clientName}` 
-                          : '🟢 Empty Open Availability Window'}
+                    <div className="font-bold text-base flex items-center gap-2">
+                      <span>
+                        {slot.isRainout 
+                          ? '🌧️ Rainout Flagged' 
+                          : isCompleted 
+                            ? `✅ Completed Cut: ${slot.clientName}` 
+                            : isBooked 
+                              ? `✂️ Scheduled Cut: ${slot.clientName}` 
+                              : '🟢 Empty Open Availability Window'}
+                      </span>
                     </div>
                     
                     {!isCompleted && (
@@ -201,18 +219,36 @@ export default function LawnScheduleDashboard() {
                     </div>
                   )}
 
-                  {/* Public Broadcast Note Input Field */}
-                  <div className="pt-1">
-                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
-                      📢 Public Broadcast Note (Seen on Home Page)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Weather delay, working Daphne area, etc..."
-                      value={slot.dailyNote || ''}
-                      onChange={(e) => handleNoteChange(slot.id, e.target.value)}
-                      className="w-full text-xs rounded border border-gray-300 p-2 bg-white text-gray-900 font-medium focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                    />
+                  {/* Operational Controls Footer Layout Block */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 items-end">
+                    
+                    {/* Public Broadcast Note Input Field */}
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
+                        📢 Public Broadcast Note (Seen on Home Page)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Weather delay, working Daphne area, etc..."
+                        value={slot.dailyNote || ''}
+                        onChange={(e) => handleNoteChange(slot.id, e.target.value)}
+                        className="w-full text-xs rounded border border-gray-300 p-2 bg-white text-gray-900 font-medium focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                      />
+                    </div>
+
+                    {/* --- NEW RAINOUT CHECKBOX PANEL --- */}
+                    <div className="flex items-center h-9 pl-1">
+                      <label className="flex items-center gap-2 cursor-pointer select-none bg-white border border-gray-300 px-3 py-1.5 rounded-lg shadow-sm hover:bg-gray-50 transition-colors w-full">
+                        <input
+                          type="checkbox"
+                          checked={!!slot.isRainout}
+                          onChange={() => handleRainoutToggle(slot.id, !!slot.isRainout)}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                        />
+                        <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">🌧️ Rainout</span>
+                      </label>
+                    </div>
+
                   </div>
 
                 </div>
@@ -279,7 +315,7 @@ export default function LawnScheduleDashboard() {
           </div>
         )}
 
-        {/* UPDATED: Displays history labels for the last 14 days */}
+        {/* Collapsible Vault Section */}
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
           <button
             onClick={() => setIsPastOpen(!isPastOpen)}

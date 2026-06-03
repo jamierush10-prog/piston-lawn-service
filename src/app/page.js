@@ -46,6 +46,7 @@ export default function PistonLawnHomeScreen() {
       const slotRef = doc(db, 'slots', selectedSlot.id);
       await updateDoc(slotRef, {
         isReserved: true,
+        status: 'booked',
         clientName: clientName.trim(),
         clientPhone: clientPhone.trim(),
         clientAddress: clientAddress.trim()
@@ -84,12 +85,12 @@ export default function PistonLawnHomeScreen() {
       return isSameDay(slotDate, date);
     });
 
-    // FIXED: Sort slots so booked items (isReserved === true) come first (a - b layout logic)
+    // Sort slots so Booked or Completed items come first, open buttons come last
     const sortedDaySlots = [...daySlots].sort((a, b) => {
-      const aBooked = a.isReserved || !!a.clientName;
-      const bBooked = b.isReserved || !!b.clientName;
-      if (aBooked && !bBooked) return -1;
-      if (!aBooked && bBooked) return 1;
+      const aReserved = a.status === 'completed' || a.isReserved || !!a.clientName;
+      const bReserved = b.status === 'completed' || b.isReserved || !!b.clientName;
+      if (aReserved && !bReserved) return -1;
+      if (!aReserved && bReserved) return 1;
       return 0;
     });
 
@@ -122,23 +123,41 @@ export default function PistonLawnHomeScreen() {
           )}
         </div>
 
-        {/* Dynamic Slots & Bookings Stream Feed (Booked first, open after) */}
+        {/* Dynamic Slots & Bookings Feed */}
         <div className="flex-1 pt-1">
           {sortedDaySlots.length === 0 ? (
             <span className="text-sm italic text-gray-400">No slots available for this date</span>
           ) : (
             <div className="flex flex-wrap gap-2">
               {sortedDaySlots.map((slot) => {
+                const isCompleted = slot.status === 'completed';
                 const isBooked = !!slot.clientName || slot.isReserved;
                 
+                // --- FIXED: Render Black background badge with white text and green check mark if Completed ---
+                if (isCompleted) {
+                  return (
+                    <div 
+                      key={slot.id} 
+                      className="text-xs px-3 py-1.5 rounded-lg font-bold bg-black text-white border border-black shadow-sm flex items-center gap-1"
+                    >
+                      <span>✅ Cut: {slot.clientName}</span>
+                    </div>
+                  );
+                }
+
+                // Render normal gray locked badge if Booked but not completed yet
                 if (isBooked) {
                   return (
-                    <div key={slot.id} className="text-xs px-3 py-1.5 rounded-lg font-bold bg-gray-100 text-gray-600 border border-gray-200 shadow-sm">
+                    <div 
+                      key={slot.id} 
+                      className="text-xs px-3 py-1.5 rounded-lg font-bold bg-gray-100 text-gray-600 border border-gray-200 shadow-sm"
+                    >
                       🔒 Booked: {slot.clientName}
                     </div>
                   );
                 }
 
+                // Otherwise render open button
                 return (
                   <button
                     key={slot.id}

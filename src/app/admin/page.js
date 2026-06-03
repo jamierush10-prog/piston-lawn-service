@@ -57,10 +57,11 @@ export default function LawnScheduleDashboard() {
       await addDoc(collection(db, 'slots'), {
         date: selectedDate,
         isReserved: false,
+        status: 'open', // added explicit status tracking
         clientName: '',
         clientPhone: '',
         clientAddress: '',
-        dailyNote: '' // Initialize with empty broadcast note
+        dailyNote: '' 
       });
       setStatusMessage(`Published slot for ${format(new Date(selectedDate + 'T00:00:00'), 'MMM d, yyyy')}!`);
       setSelectedDate('');
@@ -83,18 +84,30 @@ export default function LawnScheduleDashboard() {
     }
   };
 
-  // 5. Complete a job or purge an unneeded open availability window
+  // 5. FIXED: Complete a job (updates status to 'completed') OR delete unbooked empty slots
   const handleCompleteSlot = async (slotId, dateLabel, clientName) => {
-    const confirmationPrompt = clientName 
-      ? `Mark job for ${clientName} on ${dateLabel} as COMPLETE and clear it?`
-      : `Remove open availability slot on ${dateLabel}?`;
-
-    if (window.confirm(confirmationPrompt)) {
-      try {
-        await deleteDoc(doc(db, 'slots', slotId));
-      } catch (error) {
-        console.error("Error removing document: ", error);
-        alert("Action failed. Check your network permissions connection.");
+    if (clientName) {
+      // If it's a booked service, flip its status instead of deleting it
+      if (window.confirm(`Mark job for ${clientName} on ${dateLabel} as COMPLETE?`)) {
+        try {
+          const slotRef = doc(db, 'slots', slotId);
+          await updateDoc(slotRef, {
+            status: 'completed'
+          });
+        } catch (error) {
+          console.error("Error completing job document: ", error);
+          alert("Action failed. Check your network permissions connection.");
+        }
+      }
+    } else {
+      // If it's an empty open slot, delete it entirely to purge it from calendar list view
+      if (window.confirm(`Remove open availability slot on ${dateLabel}?`)) {
+        try {
+          await deleteDoc(doc(db, 'slots', slotId));
+        } catch (error) {
+          console.error("Error removing document: ", error);
+          alert("Action failed. Check your network permissions connection.");
+        }
       }
     }
   };
@@ -145,41 +158,51 @@ export default function LawnScheduleDashboard() {
           ) : (
             daySlots.map((slot) => {
               const isBooked = !!slot.clientName;
+              const isCompleted = slot.status === 'completed';
+              
               return (
                 <div 
                   key={slot.id} 
                   className={`p-4 rounded-lg border flex flex-col gap-3 ${
-                    isBooked 
-                      ? 'bg-amber-50 text-amber-900 border-amber-200' 
-                      : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    isCompleted
+                      ? 'bg-gray-100 text-gray-700 border-gray-300 opacity-75'
+                      : isBooked 
+                        ? 'bg-amber-50 text-amber-900 border-amber-200' 
+                        : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                   }`}
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <div className="font-bold text-base">
-                      {isBooked ? `✂️ Scheduled Cut: ${slot.clientName}` : '🟢 Empty Open Availability Window'}
+                      {isCompleted 
+                        ? `✅ Completed Cut: ${slot.clientName}` 
+                        : isBooked 
+                          ? `✂️ Scheduled Cut: ${slot.clientName}` 
+                          : '🟢 Empty Open Availability Window'}
                     </div>
                     
-                    <button
-                      onClick={() => handleCompleteSlot(slot.id, formattedDateLabel, slot.clientName)}
-                      className={`text-xs px-3 py-1.5 rounded shadow-sm font-bold transition-colors self-start sm:self-center ${
-                        isBooked 
-                          ? 'bg-amber-600 text-white hover:bg-red-600' 
-                          : 'bg-white text-gray-700 border hover:bg-gray-100'
-                    }`}
-                    >
-                      {isBooked ? '✓ Complete Job' : '✕ Remove'}
-                    </button>
+                    {!isCompleted && (
+                      <button
+                        onClick={() => handleCompleteSlot(slot.id, formattedDateLabel, slot.clientName)}
+                        className={`text-xs px-3 py-1.5 rounded shadow-sm font-bold transition-colors self-start sm:self-center ${
+                          isBooked 
+                            ? 'bg-amber-600 text-white hover:bg-green-700' 
+                            : 'bg-white text-gray-700 border hover:bg-gray-100'
+                        }`}
+                      >
+                        {isBooked ? '✓ Complete Job' : '✕ Remove'}
+                      </button>
+                    )}
                   </div>
 
                   {/* Client Metadata block */}
                   {isBooked && (
-                    <div className="text-xs text-gray-600 font-medium space-y-0.5 bg-white/60 p-2 rounded border border-amber-100">
+                    <div className="text-xs text-gray-600 font-medium space-y-0.5 bg-white/60 p-2 rounded border border-gray-100">
                       <p><span className="font-bold text-gray-700">Phone:</span> {slot.clientPhone || 'Not Provided'}</p>
                       <p><span className="font-bold text-gray-700">Address:</span> {slot.clientAddress || 'Not Provided'}</p>
                     </div>
                   )}
 
-                  {/* --- NEW LIVE DAY NOTE INPUT FIELD --- */}
+                  {/* Public Broadcast Note Input Field */}
                   <div className="pt-1">
                     <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
                       📢 Public Broadcast Note (Seen on Home Page)

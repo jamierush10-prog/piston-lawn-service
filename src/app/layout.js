@@ -1,7 +1,7 @@
 import './globals.css';
 
 export const metadata = {
-  title: 'Piston Lawn Service',
+  title: 'Jamie Rush Services',
   description: 'Book your lawn care slots instantly.',
 };
 

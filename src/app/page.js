@@ -6,24 +6,6 @@ import { db } from '@/lib/firebase';
 import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { format, subDays, addDays, eachDayOfInterval, isSameDay, isBefore, startOfDay } from 'date-fns';
 
-// Verified Real Forecast Data for Daphne, AL
-const DAPHNE_FORECAST = {
-  '2026-06-02': { high: '85°F', rain: '74%' },
-  '2026-06-03': { high: '79°F', rain: '57%' },
-  '2026-06-04': { high: '83°F', rain: '0%' },
-  '2026-06-05': { high: '83°F', rain: '1%' },
-  '2026-06-06': { high: '81°F', rain: '56%' },
-  '2026-06-07': { high: '83°F', rain: '68%' },
-  '2026-06-08': { high: '84°F', rain: '60%' },
-  '2026-06-09': { high: '85°F', rain: '99%' },
-  '2026-06-10': { high: '85°F', rain: '99%' },
-  '2026-06-11': { high: '86°F', rain: '44%' },
-  '2026-06-12': { high: '87°F', rain: '55%' },
-  '2026-06-13': { high: '84°F', rain: '99%' },
-  '2026-06-14': { high: '84°F', rain: '99%' }
-};
-
-// Main functional logic component
 function SearchableLawnSchedule() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -68,11 +50,10 @@ function SearchableLawnSchedule() {
     const params = new URLSearchParams(window.location.search);
     if (value.trim()) {
       params.set('search', value);
-      setIsPastOpen(true); // Keep history visible when filtering
+      setIsPastOpen(true); 
     } else {
       params.delete('search');
     }
-    // Replaced standard window.history to utilize proper native Next.js routing streams
     router.replace(`?${params.toString()}`, { scroll: false });
   };
 
@@ -133,9 +114,6 @@ function SearchableLawnSchedule() {
 
   // Calendar Day Rows Generator UI
   const renderDayRow = (date) => {
-    const dateKey = format(date, 'yyyy-MM-dd');
-    const weather = DAPHNE_FORECAST[dateKey];
-
     const daySlots = slots.filter(slot => {
       if (!slot.date) return false;
       const slotDate = slot.date.seconds 
@@ -172,17 +150,6 @@ function SearchableLawnSchedule() {
               {format(date, 'MMM d, yyyy')} {isTodayActive && <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full ml-1">Today</span>}
             </span>
           </div>
-
-          {weather && (
-            <div className="flex items-center gap-1.5 text-xs font-bold">
-              <span className="text-red-700 bg-red-50 border border-red-100 px-2 py-0.5 rounded shadow-sm">
-                ☀️ High: {weather.high}
-              </span>
-              <span className="text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded shadow-sm">
-                💧 Rain: {weather.rain}
-              </span>
-            </div>
-          )}
 
           {dayNoteText && (
             <div className="text-[11px] bg-amber-50 text-amber-800 border border-amber-200 rounded px-2 py-1 font-semibold shadow-inner mt-1 max-w-[220px]">
@@ -258,7 +225,6 @@ function SearchableLawnSchedule() {
           </div>
         )}
 
-        {/* Filter input fires updated link path mutations */}
         <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
           <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
             🔍 Filter Timeline by Client Name
@@ -327,7 +293,6 @@ function SearchableLawnSchedule() {
         </div>
       </div>
 
-      {/* POP-UP MODAL WINDOW OVERLAY */}
       {selectedSlot && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-xl border border-gray-100">
@@ -390,7 +355,6 @@ function SearchableLawnSchedule() {
   );
 }
 
-// Master Next.js default export wrapped in standard Suspense architecture to handle server-side pre-rendering boundaries safely
 export default function PistonLawnHomeScreenWrapper() {
   return (
     <Suspense fallback={

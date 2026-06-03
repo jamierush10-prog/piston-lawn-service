@@ -12,6 +12,7 @@ function SearchableLawnSchedule() {
 
   // Booking Workflow States
   const [slots, setSlots] = useState([]);
+  const [dayConfigs, setDayConfigs] = useState([]); // Real-time master standalone days tracker feed
   const [loading, setLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [bookingSuccess, setBookingSuccess] = useState(false);
@@ -26,21 +27,31 @@ function SearchableLawnSchedule() {
   
   const [isPastOpen, setIsPastOpen] = useState(!!searchParams.get('search'));
 
-  // 1. Listen to live database slots
+  // 1. Sync live real-time feeds from both collections
   useEffect(() => {
-    const q = query(collection(db, 'slots'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const qSlots = query(collection(db, 'slots'));
+    const unsubscribeSlots = onSnapshot(qSlots, (snapshot) => {
       const slotsData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
       setSlots(slotsData);
-      setLoading(false);
-    }, (error) => {
-      console.error("Firestore loading error: ", error);
-    });
+    }, (error) => console.error("Firestore slots connection error: ", error));
 
-    return () => unsubscribe();
+    const qDays = query(collection(db, 'days'));
+    const unsubscribeDays = onSnapshot(qDays, (snapshot) => {
+      const daysData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setDayConfigs(daysData);
+      setLoading(false);
+    }, (error) => console.error("Firestore days configuration error: ", error));
+
+    return () => {
+      unsubscribeSlots();
+      unsubscribeDays();
+    };
   }, []);
 
   // 2. Dynamically push search text modifications straight up into the web address link parameters
@@ -113,6 +124,12 @@ function SearchableLawnSchedule() {
 
   // Calendar Day Rows Generator UI
   const renderDayRow = (date) => {
+    const dateKey = format(date, 'yyyy-MM-dd');
+    
+    // FIXED: Check blanket day state configuration directly from the standalone collection query loop
+    const dayConfig = dayConfigs.find(d => d.id === dateKey);
+    const isDayRainout = dayConfig ? !!dayConfig.isRainout : false;
+
     const daySlots = slots.filter(slot => {
       if (!slot.date) return false;
       const slotDate = slot.date.seconds 
@@ -132,16 +149,13 @@ function SearchableLawnSchedule() {
 
     const isTodayActive = isSameDay(date, today);
     const dayNoteText = daySlots.find(s => s.dailyNote)?.dailyNote;
-    
-    // Check if any slot allocated on this day is currently marked as a rainout delay
-    const isDayRainout = daySlots.some(s => s.isRainout);
 
     return (
       <div 
         key={date.toString()} 
         className={`p-4 rounded-xl shadow-sm border transition-all flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 ${
           isDayRainout
-            ? 'bg-blue-50/60 border-blue-300 ring-1 ring-blue-200' // --- FIXED: Highlight row soft blue if checked Rainout ---
+            ? 'bg-blue-50/60 border-blue-300 ring-1 ring-blue-200' // FIXED: Highlight full actual row frame soft blue if day is flagged
             : isTodayActive 
               ? 'border-green-500 bg-green-50/10 ring-1 ring-green-400' 
               : 'border-gray-200 bg-white'
@@ -151,7 +165,7 @@ function SearchableLawnSchedule() {
           <div>
             <span className="font-bold text-gray-900 block text-base flex items-center gap-1.5">
               {format(date, 'EEEE')}
-              {isDayRainout && <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full bg-blue-600 text-white uppercase tracking-wider animate-pulse">Rainout</span>}
+              {isDayRainout && <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-blue-600 text-white uppercase tracking-wider animate-pulse">🌧️ Rainout</span>}
             </span>
             <span className="text-sm text-gray-500 font-medium">
               {format(date, 'MMM d, yyyy')} {isTodayActive && !isDayRainout && <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full ml-1">Today</span>}

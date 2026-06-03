@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, onSnapshot, query, doc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, doc, deleteDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { format, subDays, addDays, eachDayOfInterval, isSameDay, isBefore, startOfDay } from 'date-fns';
 
 export default function LawnScheduleDashboard() {
@@ -12,6 +12,7 @@ export default function LawnScheduleDashboard() {
 
   // Business logic states
   const [slots, setSlots] = useState([]);
+  const [dayConfigs, setDayConfigs] = useState([]); // Master tracking state for standalone day rainouts
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
@@ -19,23 +20,35 @@ export default function LawnScheduleDashboard() {
   // Interface layout states
   const [isPastOpen, setIsPastOpen] = useState(false);
 
-  // 1. Sync real-time data streaming straight from Firestore
+  // 1. Sync real-time data streaming straight from Firestore collections
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const q = query(collection(db, 'slots'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    // Stream individual appointment slots
+    const qSlots = query(collection(db, 'slots'));
+    const unsubscribeSlots = onSnapshot(qSlots, (snapshot) => {
       const slotsData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
       setSlots(slotsData);
-      setLoading(false);
-    }, (error) => {
-      console.error("Firestore connection error: ", error);
-    });
+    }, (error) => console.error("Slots stream error: ", error));
 
-    return () => unsubscribe();
+    // Stream blanket daily configs (Rainouts)
+    const qDays = query(collection(db, 'days'));
+    const unsubscribeDays = onSnapshot(qDays, (snapshot) => {
+      const daysData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setDayConfigs(daysData);
+      setLoading(false);
+    }, (error) => console.error("Days configuration stream error: ", error));
+
+    return () => {
+      unsubscribeSlots();
+      unsubscribeDays();
+    };
   }, [isAuthenticated]);
 
   // 2. Security access pass check
@@ -61,8 +74,7 @@ export default function LawnScheduleDashboard() {
         clientName: '',
         clientPhone: '',
         clientAddress: '',
-        dailyNote: '',
-        isRainout: false // Initialize rainout status as false
+        dailyNote: ''
       });
       setStatusMessage(`Published slot for ${format(new Date(selectedDate + 'T00:00:00'), 'MMM d, yyyy')}!`);
       setSelectedDate('');
@@ -85,19 +97,19 @@ export default function LawnScheduleDashboard() {
     }
   };
 
-  // 5. NEW: Toggle Rainout Checkbox state
-  const handleRainoutToggle = async (slotId, currentSetting) => {
+  // 5. FIXED: Toggle master blanket Rainout state on the actual day itself
+  const handleDayRainoutToggle = async (dateKey, currentSetting) => {
     try {
-      const slotRef = doc(db, 'slots', slotId);
-      await updateDoc(slotRef, {
+      const dayRef = doc(db, 'days', dateKey);
+      await setDoc(dayRef, {
         isRainout: !currentSetting
-      });
+      }, { merge: true });
     } catch (error) {
-      console.error("Error updating rainout status: ", error);
+      console.error("Error toggling master day rainout: ", error);
     }
   };
 
-  // 6. Complete a job (updates status to 'completed') OR delete unbooked empty slots
+  // 6. Complete a job or delete unbooked empty slots
   const handleCompleteSlot = async (slotId, dateLabel, clientName) => {
     if (clientName) {
       if (window.confirm(`Mark job for ${clientName} on ${dateLabel} as COMPLETE?`)) {
@@ -108,7 +120,6 @@ export default function LawnScheduleDashboard() {
           });
         } catch (error) {
           console.error("Error completing job document: ", error);
-          alert("Action failed. Check your network permissions connection.");
         }
       }
     } else {
@@ -117,7 +128,6 @@ export default function LawnScheduleDashboard() {
           await deleteDoc(doc(db, 'slots', slotId));
         } catch (error) {
           console.error("Error removing document: ", error);
-          alert("Action failed. Check your network permissions connection.");
         }
       }
     }
@@ -134,6 +144,12 @@ export default function LawnScheduleDashboard() {
 
   // Render Layout Rows Generator
   const renderDayRow = (date) => {
+    const dateKey = format(date, 'yyyy-MM-dd');
+    
+    // Check if this specific day is explicitly marked as a rainout in the database
+    const dayConfig = dayConfigs.find(d => d.id === dateKey);
+    const isRainoutChecked = dayConfig ? !!dayConfig.isRainout : false;
+
     const daySlots = slots.filter(slot => {
       if (!slot.date) return false;
       const slotDate = slot.date.seconds 
@@ -148,24 +164,44 @@ export default function LawnScheduleDashboard() {
     return (
       <div 
         key={date.toString()} 
-        className={`p-4 rounded-xl bg-white shadow-sm border transition-all ${
-          isTodayActive ? 'border-green-500 bg-green-50/20 ring-1 ring-green-400' : 'border-gray-200'
-        } flex flex-col md:flex-row md:items-start md:justify-between gap-4`}
+        className={`p-4 rounded-xl border transition-all flex flex-col md:flex-row md:items-start md:justify-between gap-4 ${
+          isRainoutChecked
+            ? 'bg-blue-50/50 border-blue-300 shadow-sm'
+            : isTodayActive 
+              ? 'border-green-500 bg-green-50/20 ring-1 ring-green-400' 
+              : 'border-gray-200 bg-white'
+        }`}
       >
-        {/* Date / Weekday Label */}
-        <div className="min-w-[180px] pt-1">
-          <span className="font-bold text-gray-900 block text-base">
-            {format(date, 'EEEE')}
-          </span>
-          <span className="text-sm text-gray-500 font-medium">
-            {formattedDateLabel} {isTodayActive && <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full ml-1.5">Today</span>}
-          </span>
+        {/* Date / Weekday Label and Master Rainout Box */}
+        <div className="min-w-[190px] space-y-2">
+          <div>
+            <span className="font-bold text-gray-900 block text-base flex items-center gap-1.5">
+              {format(date, 'EEEE')}
+              {isRainoutChecked && <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-blue-600 text-white uppercase tracking-wider">Rained Out</span>}
+            </span>
+            <span className="text-sm text-gray-500 font-medium block">
+              {formattedDateLabel} {isTodayActive && <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full ml-1">Today</span>}
+            </span>
+          </div>
+
+          {/* --- FIXED: Rainout Checkbox placed on the actual day control panel itself --- */}
+          <div className="pt-1">
+            <label className="flex items-center gap-2 cursor-pointer select-none bg-gray-50 border border-gray-300 px-2.5 py-1.5 rounded-lg shadow-sm hover:bg-gray-100 transition-colors w-full sm:w-auto inline-flex">
+              <input
+                type="checkbox"
+                checked={isRainoutChecked}
+                onChange={() => handleDayRainoutToggle(dateKey, isRainoutChecked)}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+              />
+              <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wider">🌧️ Rainout Day</span>
+            </label>
+          </div>
         </div>
 
-        {/* Current matching items list inside database */}
+        {/* Current matching slot loops inside database */}
         <div className="flex-1 flex flex-col gap-3">
           {daySlots.length === 0 ? (
-            <span className="text-sm italic text-gray-400 pt-1">No appointments scheduled</span>
+            <span className="text-sm italic text-gray-400 pt-1.5">No slots published for this date</span>
           ) : (
             daySlots.map((slot) => {
               const isBooked = !!slot.clientName;
@@ -174,81 +210,49 @@ export default function LawnScheduleDashboard() {
               return (
                 <div 
                   key={slot.id} 
-                  className={`p-4 rounded-lg border flex flex-col gap-3 ${
-                    slot.isRainout
-                      ? 'bg-blue-50/70 border-blue-200 text-blue-900' // Visual indicator on admin if checked
-                      : isCompleted
-                        ? 'bg-gray-100 text-gray-700 border-gray-300 opacity-75'
-                        : isBooked 
-                          ? 'bg-amber-50 text-amber-900 border-amber-200' 
-                          : 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                  }`}
+                  className={`p-3.5 rounded-lg border flex flex-col gap-3 bg-white border-gray-200 shadow-sm`}
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                    <div className="font-bold text-base flex items-center gap-2">
-                      <span>
-                        {slot.isRainout 
-                          ? '🌧️ Rainout Flagged' 
-                          : isCompleted 
-                            ? `✅ Completed Cut: ${slot.clientName}` 
-                            : isBooked 
-                              ? `✂️ Scheduled Cut: ${slot.clientName}` 
-                              : '🟢 Empty Open Availability Window'}
-                      </span>
+                    <div className="font-bold text-sm text-gray-800">
+                      {isCompleted 
+                        ? `✅ Completed Cut: ${slot.clientName}` 
+                        : isBooked 
+                          ? `✂️ Scheduled Cut: ${slot.clientName}` 
+                          : '🟢 Empty Open Availability Window'}
                     </div>
                     
                     {!isCompleted && (
                       <button
                         onClick={() => handleCompleteSlot(slot.id, formattedDateLabel, slot.clientName)}
-                        className={`text-xs px-3 py-1.5 rounded shadow-sm font-bold transition-colors self-start sm:self-center ${
+                        className={`text-xs px-2.5 py-1 rounded font-bold transition-colors self-start sm:self-center ${
                           isBooked 
                             ? 'bg-amber-600 text-white hover:bg-green-700' 
                             : 'bg-white text-gray-700 border hover:bg-gray-100'
                         }`}
                       >
-                        {isBooked ? '✓ Complete Job' : '✕ Remove'}
+                        {isBooked ? '✓ Complete' : '✕ Remove'}
                       </button>
                     )}
                   </div>
 
-                  {/* Client Metadata block */}
                   {isBooked && (
-                    <div className="text-xs text-gray-600 font-medium space-y-0.5 bg-white/60 p-2 rounded border border-gray-100">
+                    <div className="text-xs text-gray-600 font-medium space-y-0.5 bg-gray-50 p-2 rounded border border-gray-200">
                       <p><span className="font-bold text-gray-700">Phone:</span> {slot.clientPhone || 'Not Provided'}</p>
                       <p><span className="font-bold text-gray-700">Address:</span> {slot.clientAddress || 'Not Provided'}</p>
                     </div>
                   )}
 
-                  {/* Operational Controls Footer Layout Block */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 items-end">
-                    
-                    {/* Public Broadcast Note Input Field */}
-                    <div className="sm:col-span-2">
-                      <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
-                        📢 Public Broadcast Note (Seen on Home Page)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Weather delay, working Daphne area, etc..."
-                        value={slot.dailyNote || ''}
-                        onChange={(e) => handleNoteChange(slot.id, e.target.value)}
-                        className="w-full text-xs rounded border border-gray-300 p-2 bg-white text-gray-900 font-medium focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                      />
-                    </div>
-
-                    {/* --- NEW RAINOUT CHECKBOX PANEL --- */}
-                    <div className="flex items-center h-9 pl-1">
-                      <label className="flex items-center gap-2 cursor-pointer select-none bg-white border border-gray-300 px-3 py-1.5 rounded-lg shadow-sm hover:bg-gray-50 transition-colors w-full">
-                        <input
-                          type="checkbox"
-                          checked={!!slot.isRainout}
-                          onChange={() => handleRainoutToggle(slot.id, !!slot.isRainout)}
-                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
-                        />
-                        <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">🌧️ Rainout</span>
-                      </label>
-                    </div>
-
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">
+                      📢 Broadcast Note
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Weather delay, working Daphne area, etc..."
+                      value={slot.dailyNote || ''}
+                      onChange={(e) => handleNoteChange(slot.id, e.target.value)}
+                      className="w-full text-xs rounded border border-gray-300 p-2 bg-white text-gray-900 font-medium focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                    />
                   </div>
 
                 </div>

@@ -12,10 +12,14 @@ export default function LawnScheduleDashboard() {
 
   // Business logic states
   const [slots, setSlots] = useState([]);
-  const [dayConfigs, setDayConfigs] = useState([]); // Master tracking state for standalone day rainouts
+  const [dayConfigs, setDayConfigs] = useState([]); 
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
+  
+  // Rescheduling Flow States
+  const [movingSlot, setMovingSlot] = useState(null);
+  const [targetMoveDate, setTargetMoveDate] = useState('');
   
   // Interface layout states
   const [isPastOpen, setIsPastOpen] = useState(false);
@@ -24,7 +28,6 @@ export default function LawnScheduleDashboard() {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    // Stream individual appointment slots
     const qSlots = query(collection(db, 'slots'));
     const unsubscribeSlots = onSnapshot(qSlots, (snapshot) => {
       const slotsData = snapshot.docs.map(doc => ({
@@ -34,7 +37,6 @@ export default function LawnScheduleDashboard() {
       setSlots(slotsData);
     }, (error) => console.error("Slots stream error: ", error));
 
-    // Stream blanket daily configs (Rainouts)
     const qDays = query(collection(db, 'days'));
     const unsubscribeDays = onSnapshot(qDays, (snapshot) => {
       const daysData = snapshot.docs.map(doc => ({
@@ -97,7 +99,7 @@ export default function LawnScheduleDashboard() {
     }
   };
 
-  // 5. FIXED: Toggle master blanket Rainout state on the actual day itself
+  // 5. Toggle master blanket Rainout state on the actual day itself
   const handleDayRainoutToggle = async (dateKey, currentSetting) => {
     try {
       const dayRef = doc(db, 'days', dateKey);
@@ -109,31 +111,58 @@ export default function LawnScheduleDashboard() {
     }
   };
 
-  // 6. Complete a job or delete unbooked empty slots
+  // 6. Complete a job workflow action
   const handleCompleteSlot = async (slotId, dateLabel, clientName) => {
-    if (clientName) {
-      if (window.confirm(`Mark job for ${clientName} on ${dateLabel} as COMPLETE?`)) {
-        try {
-          const slotRef = doc(db, 'slots', slotId);
-          await updateDoc(slotRef, {
-            status: 'completed'
-          });
-        } catch (error) {
-          console.error("Error completing job document: ", error);
-        }
-      }
-    } else {
-      if (window.confirm(`Remove open availability slot on ${dateLabel}?`)) {
-        try {
-          await deleteDoc(doc(db, 'slots', slotId));
-        } catch (error) {
-          console.error("Error removing document: ", error);
-        }
+    if (window.confirm(`Mark job for ${clientName} on ${dateLabel} as COMPLETE?`)) {
+      try {
+        const slotRef = doc(db, 'slots', slotId);
+        await updateDoc(slotRef, {
+          status: 'completed'
+        });
+      } catch (error) {
+        console.error("Error completing job document: ", error);
       }
     }
   };
 
-  // 7. Generate rolling timeframes (-14 days to +22 days)
+  // 7. NEW: Permanent deletion workflow handler for booked or empty slots
+  const handleDeleteSlot = async (slotId, dateLabel, clientName) => {
+    const confirmMessage = clientName
+      ? `🚨 PERMANENTLY DELETE booking for ${clientName} on ${dateLabel}? This completely removes their records.`
+      : `Remove open availability window on ${dateLabel}?`;
+
+    if (window.confirm(confirmMessage)) {
+      try {
+        await deleteDoc(doc(db, 'slots', slotId));
+      } catch (error) {
+        console.error("Error deleting slot: ", error);
+        alert("Delete operation failed.");
+      }
+    }
+  };
+
+  // 8. NEW: Reschedule appointment move submit engine
+  const handleMoveSlotSubmit = async (e) => {
+    e.preventDefault();
+    if (!movingSlot || !targetMoveDate) return;
+
+    try {
+      const slotRef = doc(db, 'slots', movingSlot.id);
+      await updateDoc(slotRef, {
+        date: targetMoveDate
+      });
+      
+      setStatusMessage(`Successfully moved ${movingSlot.clientName || 'slot'} to ${format(new Date(targetMoveDate + 'T00:00:00'), 'MMM d, yyyy')}!`);
+      setMovingSlot(null);
+      setTargetMoveDate('');
+      setTimeout(() => setStatusMessage(''), 5000);
+    } catch (error) {
+      console.error("Error updating slot date destination: ", error);
+      alert("Could not reschedule appointment slot.");
+    }
+  };
+
+  // 9. Generate rolling timeframes (-14 days to +22 days)
   const today = startOfDay(new Date());
   const startDate = subDays(today, 14);
   const endDate = addDays(today, 22);
@@ -145,8 +174,6 @@ export default function LawnScheduleDashboard() {
   // Render Layout Rows Generator
   const renderDayRow = (date) => {
     const dateKey = format(date, 'yyyy-MM-dd');
-    
-    // Check if this specific day is explicitly marked as a rainout in the database
     const dayConfig = dayConfigs.find(d => d.id === dateKey);
     const isRainoutChecked = dayConfig ? !!dayConfig.isRainout : false;
 
@@ -184,7 +211,6 @@ export default function LawnScheduleDashboard() {
             </span>
           </div>
 
-          {/* --- FIXED: Rainout Checkbox placed on the actual day control panel itself --- */}
           <div className="pt-1">
             <label className="flex items-center gap-2 cursor-pointer select-none bg-gray-50 border border-gray-300 px-2.5 py-1.5 rounded-lg shadow-sm hover:bg-gray-100 transition-colors w-full sm:w-auto inline-flex">
               <input
@@ -210,10 +236,10 @@ export default function LawnScheduleDashboard() {
               return (
                 <div 
                   key={slot.id} 
-                  className={`p-3.5 rounded-lg border flex flex-col gap-3 bg-white border-gray-200 shadow-sm`}
+                  className="p-4 rounded-lg border flex flex-col gap-3 bg-white border-gray-200 shadow-sm"
                 >
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                    <div className="font-bold text-sm text-gray-800">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                    <div className="font-bold text-sm text-gray-800 pt-0.5">
                       {isCompleted 
                         ? `✅ Completed Cut: ${slot.clientName}` 
                         : isBooked 
@@ -221,18 +247,39 @@ export default function LawnScheduleDashboard() {
                           : '🟢 Empty Open Availability Window'}
                     </div>
                     
-                    {!isCompleted && (
+                    {/* --- ACTION WORKFLOW BUTTONS CONTAINER PANEL --- */}
+                    <div className="flex flex-wrap sm:flex-col gap-2 self-start sm:self-center min-w-[110px]">
+                      {!isCompleted && isBooked && (
+                        <button
+                          onClick={() => handleCompleteSlot(slot.id, formattedDateLabel, slot.clientName)}
+                          className="text-xs px-3 py-1.5 rounded font-bold shadow-sm bg-emerald-600 text-white hover:bg-emerald-700 transition w-full text-center"
+                        >
+                          ✓ Complete
+                        </button>
+                      )}
+                      
+                      {/* NEW: Move to target day button control logic layout block */}
+                      {!isCompleted && isBooked && (
+                        <button
+                          onClick={() => setMovingSlot(slot)}
+                          className="text-xs px-3 py-1.5 rounded font-bold shadow-sm bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition w-full text-center"
+                        >
+                          ➡️ Move Date
+                        </button>
+                      )}
+
+                      {/* NEW: Explicit Delete button placement mapped under the primary action controls */}
                       <button
-                        onClick={() => handleCompleteSlot(slot.id, formattedDateLabel, slot.clientName)}
-                        className={`text-xs px-2.5 py-1 rounded font-bold transition-colors self-start sm:self-center ${
+                        onClick={() => handleDeleteSlot(slot.id, formattedDateLabel, slot.clientName)}
+                        className={`text-xs px-3 py-1.5 rounded font-bold shadow-sm transition w-full text-center ${
                           isBooked 
-                            ? 'bg-amber-600 text-white hover:bg-green-700' 
-                            : 'bg-white text-gray-700 border hover:bg-gray-100'
+                            ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100' 
+                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
                         }`}
                       >
-                        {isBooked ? '✓ Complete' : '✕ Remove'}
+                        ✕ Delete
                       </button>
-                    )}
+                    </div>
                   </div>
 
                   {isBooked && (
@@ -286,7 +333,7 @@ export default function LawnScheduleDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-800 p-4 sm:p-6 font-sans">
+    <div className="min-h-screen bg-gray-50 text-gray-800 p-4 sm:p-6 font-sans relative">
       <div className="max-w-4xl mx-auto space-y-6">
         
         {/* Header Block Control Component Area */}
@@ -357,6 +404,58 @@ export default function LawnScheduleDashboard() {
         </div>
 
       </div>
+
+      {/* --- NEW POP-UP INTERACTIVE RESCHEDULING MODAL OVERLAY --- */}
+      {movingSlot && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-xl border border-gray-100 animate-scale-up">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h3 className="text-lg font-extrabold text-gray-900">Reschedule Appointment</h3>
+                <p className="text-xs font-semibold text-blue-700 mt-0.5">
+                  Client: {movingSlot.clientName}
+                </p>
+              </div>
+              <button 
+                onClick={() => setMovingSlot(null)}
+                className="text-gray-400 hover:text-gray-600 font-bold text-lg p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleMoveSlotSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">Select New Date Destination</label>
+                <input
+                  type="date"
+                  value={targetMoveDate}
+                  onChange={(e) => setTargetMoveDate(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 p-2.5 text-sm text-gray-900 font-medium focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setMovingSlot(null)}
+                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-sm py-2 rounded-lg transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm py-2 rounded-lg transition shadow-sm"
+                >
+                  Confirm Move
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

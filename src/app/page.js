@@ -10,24 +10,20 @@ function SearchableLawnSchedule() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Booking Workflow States
   const [slots, setSlots] = useState([]);
-  const [dayConfigs, setDayConfigs] = useState([]); // Real-time master standalone days tracker feed
+  const [dayConfigs, setDayConfigs] = useState([]); 
   const [loading, setLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [bookingSuccess, setBookingSuccess] = useState(false);
 
-  // Initialize Search Filter from URL parameter if it exists (?search=Rotella)
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
 
-  // Modal Form Inputs
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [clientAddress, setClientAddress] = useState('');
   
   const [isPastOpen, setIsPastOpen] = useState(!!searchParams.get('search'));
 
-  // 1. Sync live real-time feeds from both collections
   useEffect(() => {
     const qSlots = query(collection(db, 'slots'));
     const unsubscribeSlots = onSnapshot(qSlots, (snapshot) => {
@@ -54,7 +50,6 @@ function SearchableLawnSchedule() {
     };
   }, []);
 
-  // 2. Dynamically push search text modifications straight up into the web address link parameters
   const updateSearchParam = (value) => {
     setSearchQuery(value);
     const params = new URLSearchParams(window.location.search);
@@ -67,7 +62,6 @@ function SearchableLawnSchedule() {
     router.replace(`?${params.toString()}`, { scroll: false });
   };
 
-  // 3. Handle client booking submission from modal
   const handleBookingSubmit = async (e) => {
     e.preventDefault();
     if (!selectedSlot || !clientName.trim() || !clientPhone.trim() || !clientAddress.trim()) return;
@@ -95,13 +89,11 @@ function SearchableLawnSchedule() {
     }
   };
 
-  // 4. Generate rolling timeframes (-14 days to +22 days)
   const today = startOfDay(new Date());
   const startDate = subDays(today, 14);
   const endDate = addDays(today, 22);
   const dateRange = eachDayOfInterval({ start: startDate, end: endDate });
 
-  // 5. Helper function to check if a date has a matching client booking
   const dateMatchesSearch = (date) => {
     if (!searchQuery.trim()) return true;
     const queryClean = searchQuery.toLowerCase().trim();
@@ -122,11 +114,8 @@ function SearchableLawnSchedule() {
   const pastDays = dateRange.filter(date => isBefore(date, today) && !isSameDay(date, today) && dateMatchesSearch(date));
   const currentAndFutureDays = dateRange.filter(date => (!isBefore(date, today) || isSameDay(date, today)) && dateMatchesSearch(date));
 
-  // Calendar Day Rows Generator UI
   const renderDayRow = (date) => {
     const dateKey = format(date, 'yyyy-MM-dd');
-    
-    // FIXED: Check blanket day state configuration directly from the standalone collection query loop
     const dayConfig = dayConfigs.find(d => d.id === dateKey);
     const isDayRainout = dayConfig ? !!dayConfig.isRainout : false;
 
@@ -155,7 +144,7 @@ function SearchableLawnSchedule() {
         key={date.toString()} 
         className={`p-4 rounded-xl shadow-sm border transition-all flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 ${
           isDayRainout
-            ? 'bg-blue-50/60 border-blue-300 ring-1 ring-blue-200' // FIXED: Highlight full actual row frame soft blue if day is flagged
+            ? 'bg-blue-50/60 border-blue-300 ring-1 ring-blue-200' 
             : isTodayActive 
               ? 'border-green-500 bg-green-50/10 ring-1 ring-green-400' 
               : 'border-gray-200 bg-white'

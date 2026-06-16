@@ -4,51 +4,85 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
-import { format, subDays, addDays, eachDayOfInterval, isSameDay, isBefore, startOfDay } from 'date-fns';
+import { format, subDays, addDays, eachDayOfInterval, isSameDay, isBefore, startOfDay, differenceInMinutes } from 'date-fns';
 
 function SearchableLawnSchedule() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  // Booking & App States
   const [slots, setSlots] = useState([]);
   const [dayConfigs, setDayConfigs] = useState([]); 
+  const [timers, setTimers] = useState([]); // Real-time client timers stream
   const [loading, setLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [isTimerModalOpen, setIsTimerModalOpen] = useState(false);
 
+  // Live timestamp to update ticking counters
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Search Filter State
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
 
+  // Modal Form Inputs
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [clientAddress, setClientAddress] = useState('');
   
   const [isPastOpen, setIsPastOpen] = useState(!!searchParams.get('search'));
 
+  // 1. Sync live real-time database collection streams
   useEffect(() => {
     const qSlots = query(collection(db, 'slots'));
     const unsubscribeSlots = onSnapshot(qSlots, (snapshot) => {
-      const slotsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const slotsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setSlots(slotsData);
-    }, (error) => console.error("Firestore slots connection error: ", error));
+    }, (error) => console.error(error));
 
     const qDays = query(collection(db, 'days'));
     const unsubscribeDays = onSnapshot(qDays, (snapshot) => {
-      const daysData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const daysData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setDayConfigs(daysData);
+    }, (error) => console.error(error));
+
+    const qTimers = query(collection(db, 'timers'));
+    const unsubscribeTimers = onSnapshot(qTimers, (snapshot) => {
+      const timersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setTimers(timersData);
       setLoading(false);
-    }, (error) => console.error("Firestore days configuration error: ", error));
+    }, (error) => console.error(error));
 
     return () => {
       unsubscribeSlots();
       unsubscribeDays();
+      unsubscribeTimers();
     };
   }, []);
+
+  // 2. Keep counters accurate by updating minute variables live
+  useEffect(() => {
+    const internalTimer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Ticks every 60 seconds
+    return () => clearInterval(internalTimer);
+  }, []);
+
+  // 3. Helper logic to calculate custom DD:HH:MM elapsed duration string
+  const calculateElapsedTime = (lastCutString) => {
+    if (!lastCutString) return '00:00:00';
+    const lastCutDate = new Date(lastCutString);
+    const totalMinutes = differenceInMinutes(currentTime, lastCutDate);
+
+    if (totalMinutes <= 0) return '00:00:00';
+
+    const days = Math.floor(totalMinutes / (24 * 60));
+    const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+    const minutes = totalMinutes % 60;
+
+    const pad = (num) => String(num).padStart(2, '0');
+    return `${pad(days)}d : ${pad(hours)}h : ${pad(minutes)}m`;
+  };
 
   const updateSearchParam = (value) => {
     setSearchQuery(value);
@@ -84,8 +118,8 @@ function SearchableLawnSchedule() {
       
       setTimeout(() => setBookingSuccess(false), 5000);
     } catch (error) {
-      console.error("Error saving booking: ", error);
-      alert("Could not process reservation. Please try again.");
+      console.error(error);
+      alert("Could not process reservation.");
     }
   };
 
@@ -97,22 +131,21 @@ function SearchableLawnSchedule() {
   const dateMatchesSearch = (date) => {
     if (!searchQuery.trim()) return true;
     const queryClean = searchQuery.toLowerCase().trim();
-    
     return slots.some(slot => {
       if (!slot.date || !slot.clientName) return false;
-      
-      const slotDate = slot.date.seconds 
-        ? new Date(slot.date.seconds * 1000) 
-        : new Date(slot.date + 'T00:00:00');
-        
+      const slotDate = slot.date.seconds ? new Date(slot.date.seconds * 1000) : new Date(slot.date + 'T00:00:00');
       if (!isSameDay(slotDate, date)) return false;
-      
       return slot.clientName.toLowerCase().includes(queryClean);
     });
   };
 
   const pastDays = dateRange.filter(date => isBefore(date, today) && !isSameDay(date, today) && dateMatchesSearch(date));
   const currentAndFutureDays = dateRange.filter(date => (!isBefore(date, today) || isSameDay(date, today)) && dateMatchesSearch(date));
+
+  // Alphabetize active clients listed inside the timer overlay modal
+  const alphabetizedTimers = [...timers].sort((a, b) => 
+    (a.name || '').localeCompare(b.name || '')
+  );
 
   const renderDayRow = (date) => {
     const dateKey = format(date, 'yyyy-MM-dd');
@@ -121,10 +154,7 @@ function SearchableLawnSchedule() {
 
     const daySlots = slots.filter(slot => {
       if (!slot.date) return false;
-      const slotDate = slot.date.seconds 
-        ? new Date(slot.date.seconds * 1000) 
-        : new Date(slot.date + 'T00:00:00');
-        
+      const slotDate = slot.date.seconds ? new Date(slot.date.seconds * 1000) : new Date(slot.date + 'T00:00:00');
       return isSameDay(slotDate, date);
     });
 
@@ -179,10 +209,7 @@ function SearchableLawnSchedule() {
                 
                 if (isCompleted) {
                   return (
-                    <div 
-                      key={slot.id} 
-                      className="text-xs px-3 py-1.5 rounded-lg font-bold bg-black text-white border border-black shadow-sm flex items-center gap-1"
-                    >
+                    <div key={slot.id} className="text-xs px-3 py-1.5 rounded-lg font-bold bg-black text-white border border-black shadow-sm flex items-center gap-1">
                       <span>✅ Cut: {slot.clientName}</span>
                     </div>
                   );
@@ -190,10 +217,7 @@ function SearchableLawnSchedule() {
 
                 if (isBooked) {
                   return (
-                    <div 
-                      key={slot.id} 
-                      className="text-xs px-3 py-1.5 rounded-lg font-bold bg-gray-100 text-gray-600 border border-gray-200 shadow-sm"
-                    >
+                    <div key={slot.id} className="text-xs px-3 py-1.5 rounded-lg font-bold bg-gray-100 text-gray-600 border border-gray-200 shadow-sm">
                       🔒 Booked: {slot.clientName}
                     </div>
                   );
@@ -204,9 +228,7 @@ function SearchableLawnSchedule() {
                     key={slot.id}
                     onClick={() => setSelectedSlot(slot)}
                     className={`text-xs px-3 py-1.5 rounded-lg font-bold border transition-all shadow-sm ${
-                      isDayRainout
-                        ? 'bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-200'
-                        : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                      isDayRainout ? 'bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
                     }`}
                   >
                     🟢 Available Open Slot
@@ -222,14 +244,20 @@ function SearchableLawnSchedule() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 pb-12 font-sans relative">
-      <div className="bg-emerald-700 text-white text-center py-10 px-4 shadow-sm mb-6">
+      <div className="bg-emerald-700 text-white text-center py-10 px-4 shadow-sm mb-6 relative">
         <h1 className="text-4xl font-extrabold tracking-tight">Jamie Rush Lawn Service</h1>
-        <p className="text-emerald-100 text-lg mt-2 font-semibold">
-          Call or Text: (251) 316-1698
-        </p>
-        <p className="text-emerald-200/80 text-sm mt-1 font-medium">
-          View our schedule & reserve your lawn care slot instantly below.
-        </p>
+        <p className="text-emerald-100 text-lg mt-2 font-semibold">Call or Text: (251) 316-1698</p>
+        <p className="text-emerald-200/80 text-sm mt-1 font-medium">View our schedule & reserve your lawn care slot instantly below.</p>
+        
+        {/* NEW: Standalone Interactive Timer Dashboard Launcher Button */}
+        <div className="mt-4 flex justify-center">
+          <button
+            onClick={() => setIsTimerModalOpen(true)}
+            className="bg-white text-emerald-800 font-bold px-4 py-2 rounded-full shadow hover:bg-emerald-50 transition text-xs flex items-center gap-1.5"
+          >
+            ⏱️ View Days Since Last Cut
+          </button>
+        </div>
       </div>
 
       <div className="max-w-4xl mx-auto px-4 space-y-6">
@@ -240,9 +268,7 @@ function SearchableLawnSchedule() {
         )}
 
         <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-          <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
-            🔍 Filter Timeline by Client Name
-          </label>
+          <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">🔍 Filter Timeline by Client Name</label>
           <div className="relative">
             <input
               type="text"
@@ -251,14 +277,7 @@ function SearchableLawnSchedule() {
               onChange={(e) => updateSearchParam(e.target.value)}
               className="w-full rounded-lg border border-gray-300 p-2.5 text-sm text-gray-900 font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none pr-10"
             />
-            {searchQuery && (
-              <button
-                onClick={() => updateSearchParam('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 font-bold text-sm"
-              >
-                ✕
-              </button>
-            )}
+            {searchQuery && <button onClick={() => updateSearchParam('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 font-bold text-sm">✕</button>}
           </div>
         </div>
 
@@ -274,48 +293,75 @@ function SearchableLawnSchedule() {
             className="w-full flex items-center justify-between p-2.5 bg-gray-100 hover:bg-gray-200 transition-colors rounded-lg text-sm font-bold text-gray-700"
           >
             <span>{isPastOpen ? '▼ Hide Prior 14 Days History' : '► Show Prior 14 Days History'}</span>
-            <span className="text-xs text-gray-500 bg-white border px-2 py-0.5 rounded-full shadow-sm font-semibold">
-              {pastDays.length} Days Visible
-            </span>
+            <span className="text-xs text-gray-500 bg-white border px-2 py-0.5 rounded-full shadow-sm font-semibold">{pastDays.length} Days Visible</span>
           </button>
 
           {isPastOpen && (
             <div className="mt-4 space-y-3 pl-3 border-l-4 border-gray-300">
-              {loading ? (
-                <p className="text-sm italic text-gray-400">Syncing database historical feeds...</p>
-              ) : pastDays.length === 0 ? (
-                <p className="text-sm italic text-gray-400 p-2">No matching historical records found.</p>
-              ) : (
-                pastDays.map(renderDayRow)
-              )}
+              {loading ? <p className="text-sm italic text-gray-400">Syncing database historical feeds...</p> : pastDays.length === 0 ? <p className="text-sm italic text-gray-400 p-2">No matching historical records found.</p> : pastDays.map(renderDayRow)}
             </div>
           )}
         </div>
 
         <div className="space-y-3">
           {loading ? (
-            <div className="p-12 text-center text-gray-400 font-medium italic bg-white rounded-xl border">
-              Loading active live timeline records...
-            </div>
+            <div className="p-12 text-center text-gray-400 font-medium italic bg-white rounded-xl border">Loading active live timeline records...</div>
           ) : currentAndFutureDays.length === 0 ? (
-            <div className="p-8 text-center text-gray-400 font-medium italic bg-white rounded-xl border">
-              No matching scheduled slots found in the upcoming lookout horizon.
-            </div>
+            <div className="p-8 text-center text-gray-400 font-medium italic bg-white rounded-xl border">No matching scheduled slots found in the upcoming lookout horizon.</div>
           ) : (
             currentAndFutureDays.map(renderDayRow)
           )}
         </div>
       </div>
 
+      {/* --- NEW SCROLLABLE CLIENT TIME TRACKER OVERLAY MODAL --- */}
+      {isTimerModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col max-h-[80vh] border border-gray-100 animate-scale-up">
+            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-2xl">
+              <div>
+                <h3 className="text-lg font-extrabold text-gray-900">Lawn Growth Monitor</h3>
+                <p className="text-xs font-semibold text-gray-500">Live duration since your last completed cut</p>
+              </div>
+              <button onClick={() => setIsTimerModalOpen(false)} className="text-gray-400 hover:text-gray-600 font-bold text-lg p-2">✕</button>
+            </div>
+
+            {/* Scrollable Container Wrapper */}
+            <div className="p-5 overflow-y-auto flex-1 space-y-3 bg-white">
+              {alphabetizedTimers.length === 0 ? (
+                <p className="text-sm italic text-center text-gray-400 py-6">No client tracker variables configured yet.</p>
+              ) : (
+                alphabetizedTimers.map((timer) => (
+                  <div key={timer.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50/50 flex items-center justify-between gap-2 shadow-sm">
+                    <span className="font-bold text-sm text-gray-800">{timer.name}</span>
+                    <span className="font-mono text-xs font-bold text-white bg-gray-900 px-3 py-1 rounded-md tracking-wider shadow-sm">
+                      {calculateElapsedTime(timer.lastCutAt)}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="p-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex">
+              <button
+                onClick={() => setIsTimerModalOpen(false)}
+                className="w-full bg-emerald-700 text-white font-bold text-sm py-2 rounded-xl hover:bg-emerald-800 shadow-sm transition"
+              >
+                Close Monitor
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BOOKING REGISTRATION MODAL WINDOW */}
       {selectedSlot && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-xl border border-gray-100">
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="text-xl font-extrabold text-gray-900">Enter Details</h3>
-                <p className="text-xs font-bold text-emerald-700 mt-0.5">
-                  Reserving: {format(new Date(selectedSlot.date + 'T00:00:00'), 'EEEE, MMM d, yyyy')}
-                </p>
+                <p className="text-xs font-bold text-emerald-700 mt-0.5">Reserving: {format(new Date(selectedSlot.date + 'T00:00:00'), 'EEEE, MMM d, yyyy')}</p>
               </div>
               <button onClick={() => setSelectedSlot(null)} className="text-gray-400 hover:text-gray-600 font-bold text-lg p-1">✕</button>
             </div>
@@ -323,40 +369,16 @@ function SearchableLawnSchedule() {
             <form onSubmit={handleBookingSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1">Your Full Name</label>
-                <input
-                  type="text"
-                  placeholder="John Smith"
-                  value={clientName}
-                  onChange={(e) => setClientName(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 p-2.5 text-sm text-gray-900 font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none"
-                  required
-                />
+                <input type="text" placeholder="John Smith" value={clientName} onChange={(e) => setClientName(e.target.value)} className="w-full rounded-lg border border-gray-300 p-2.5 text-sm text-gray-900 font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none" required />
               </div>
-
               <div>
                 <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1">Phone Number</label>
-                <input
-                  type="tel"
-                  placeholder="(251) 555-0199"
-                  value={clientPhone}
-                  onChange={(e) => setClientPhone(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 p-2.5 text-sm text-gray-900 font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none"
-                  required
-                />
+                <input type="tel" placeholder="(251) 555-0199" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} className="w-full rounded-lg border border-gray-300 p-2.5 text-sm text-gray-900 font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none" required />
               </div>
-
               <div>
                 <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1">Service Street Address</label>
-                <input
-                  type="text"
-                  placeholder="123 Main St, Daphne, AL"
-                  value={clientAddress}
-                  onChange={(e) => setClientAddress(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 p-2.5 text-sm text-gray-900 font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none"
-                  required
-                />
+                <input type="text" placeholder="123 Main St, Daphne, AL" value={clientAddress} onChange={(e) => setClientAddress(e.target.value)} className="w-full rounded-lg border border-gray-300 p-2.5 text-sm text-gray-900 font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none" required />
               </div>
-
               <div className="flex gap-2 pt-2">
                 <button type="button" onClick={() => setSelectedSlot(null)} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-sm py-2.5 rounded-lg transition">Cancel</button>
                 <button type="submit" className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm py-2.5 rounded-lg transition shadow-sm">Request Appointment</button>
@@ -371,11 +393,7 @@ function SearchableLawnSchedule() {
 
 export default function PistonLawnHomeScreenWrapper() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-400 font-medium italic">
-        Loading schedule parameters...
-      </div>
-    }>
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-400 font-medium italic">Loading schedule parameters...</div>}>
       <SearchableLawnSchedule />
     </Suspense>
   );

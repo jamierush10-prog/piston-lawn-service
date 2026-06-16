@@ -95,7 +95,7 @@ function SearchableLawnSchedule() {
 
     const pad = (num) => String(num).padStart(2, '0');
 
-    // Threshold determinations (Cycle limits match days parsed exactly)
+    // Threshold determinations
     const totalMinutesLimit = defaultCycle * 24 * 60;
     const warningMinutesWindow = (defaultCycle - 2) * 24 * 60;
 
@@ -103,11 +103,9 @@ function SearchableLawnSchedule() {
     let labelColor = 'text-gray-400';
 
     if (totalMinutes >= totalMinutesLimit) {
-      // Overdue status: Red block with white lettering
       colorClass = 'bg-rose-600 text-white border-rose-600';
       labelColor = 'text-rose-200';
     } else if (totalMinutes >= warningMinutesWindow) {
-      // Upcoming warning status: Yellow block with black lettering
       colorClass = 'bg-amber-400 text-black border-amber-400';
       labelColor = 'text-gray-900 font-bold';
     }
@@ -119,6 +117,15 @@ function SearchableLawnSchedule() {
       colorClass,
       labelColor
     };
+  };
+
+  // NEW: Calculate the exact day of the week and target date the current cycle will land on
+  const getNextTargetDueDateLabel = (lastCutString, cycleDaysSetting) => {
+    if (!lastCutString) return 'No previous date set';
+    const defaultCycle = cycleDaysSetting ? parseInt(cycleDaysSetting, 10) : 10;
+    const lastCutDate = new Date(lastCutString);
+    const nextDueDate = addDays(lastCutDate, defaultCycle);
+    return format(nextDueDate, 'EEEE, MMM d, yyyy');
   };
 
   // Update a client's cut interval directly from home view
@@ -388,20 +395,27 @@ function SearchableLawnSchedule() {
                 alphabetizedTimers.map((timer) => {
                   const currentCycleSetting = timer.cycleDays || 10;
                   const timeObj = getTimerMetrics(timer.lastCutAt, currentCycleSetting);
+                  const targetDueDateLabel = getNextTargetDueDateLabel(timer.lastCutAt, currentCycleSetting);
                   
                   return (
                     <div 
                       key={timer.id} 
                       className="p-4 rounded-xl border border-gray-200/60 bg-white flex flex-col gap-3 shadow-sm hover:shadow transition-shadow"
                     >
-                      {/* Top Row: Client Name and Cycle Select Option */}
-                      <div className="flex items-center justify-between border-b border-gray-100 pb-2 gap-2">
-                        <span className="font-extrabold text-base text-gray-900 tracking-tight break-words max-w-[240px]">
-                          {timer.name}
-                        </span>
+                      {/* Top Row: Client Name, Due Date Projection, and Cycle Select Option */}
+                      <div className="flex items-start justify-between border-b border-gray-100 pb-2.5 gap-4">
+                        <div className="space-y-1">
+                          <span className="font-extrabold text-base text-gray-900 tracking-tight block leading-tight">
+                            {timer.name}
+                          </span>
+                          {/* --- NEW TARGET DUE DATE SUB-LABEL PLACEMENT --- */}
+                          <span className="text-xs font-semibold text-emerald-700 bg-emerald-50/70 px-2 py-0.5 rounded inline-block">
+                            📅 Target Due: {targetDueDateLabel}
+                          </span>
+                        </div>
                         
-                        {/* --- NEW CYCLE (DAYS) INPUT SELECT COMPONENT ROW --- */}
-                        <div className="flex items-center gap-1.5 shrink-0 bg-gray-100 px-2 py-1 rounded-md border border-gray-200">
+                        {/* Cycle Selector Input */}
+                        <div className="flex items-center gap-1.5 shrink-0 bg-gray-100 px-2.5 py-1 rounded-md border border-gray-200 mt-0.5">
                           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cycle:</label>
                           <select
                             value={currentCycleSetting}
@@ -416,7 +430,7 @@ function SearchableLawnSchedule() {
                       </div>
                       
                       {/* Bottom Row: Countdown blocks with dynamic styling overrides */}
-                      <div className="flex items-center gap-1.5 self-end">
+                      <div className="flex items-center gap-1.5 self-end mt-1">
                         
                         {/* Days Block */}
                         <div className="flex flex-col items-center">

@@ -13,7 +13,7 @@ export default function LawnScheduleDashboard() {
   // Core business states
   const [slots, setSlots] = useState([]);
   const [dayConfigs, setDayConfigs] = useState([]); 
-  const [timers, setTimers] = useState([]); // Master client timers array
+  const [timers, setTimers] = useState([]); 
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
@@ -86,7 +86,6 @@ export default function LawnScheduleDashboard() {
     }
   };
 
-  // NEW: Save a client cut timestamp marker to Firestore database tracks
   const handleCreateTimerSubmit = async (e) => {
     e.preventDefault();
     if (!newTimerName.trim() || !newTimerStamp) return;
@@ -94,7 +93,7 @@ export default function LawnScheduleDashboard() {
     try {
       await addDoc(collection(db, 'timers'), {
         name: newTimerName.trim(),
-        lastCutAt: newTimerStamp // ISO string containing date and specific hours/minutes parameters
+        lastCutAt: newTimerStamp 
       });
       setNewTimerName('');
       setNewTimerStamp('');
@@ -106,7 +105,6 @@ export default function LawnScheduleDashboard() {
     }
   };
 
-  // NEW: Purge a tracking metric from the monitor table list
   const handleDeleteTimer = async (timerId, clientLabel) => {
     if (window.confirm(`Remove cut growth tracking configuration for ${clientLabel}?`)) {
       try {
@@ -173,6 +171,8 @@ export default function LawnScheduleDashboard() {
       return isSameDay(slotDate, date);
     });
 
+    // FIXED: Correctly declared the missing isTodayActive variable so the layout styles can read it safely
+    const isTodayActive = isSameDay(date, today);
     const formattedDateLabel = format(date, 'MMM d, yyyy');
 
     return (
@@ -183,7 +183,7 @@ export default function LawnScheduleDashboard() {
               {format(date, 'EEEE')}
               {isRainoutChecked && <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-blue-600 text-white uppercase tracking-wider">Rained Out</span>}
             </span>
-            <span className="text-sm text-gray-500 font-medium block">{formattedDateLabel}</span>
+            <span className="text-sm text-gray-500 font-medium block">{formattedDateLabel} {isTodayActive && <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full ml-1">Today</span>}</span>
           </div>
           <div className="pt-1">
             <label className="flex items-center gap-2 cursor-pointer select-none bg-gray-50 border border-gray-300 px-2.5 py-1.5 rounded-lg shadow-sm hover:bg-gray-100 transition-colors inline-flex">
@@ -264,7 +264,7 @@ export default function LawnScheduleDashboard() {
           <div className="p-3 bg-emerald-100 border border-emerald-300 text-emerald-900 font-bold rounded-lg text-sm text-center shadow-inner animate-pulse">{statusMessage}</div>
         )}
 
-        {/* --- NEW: INTERACTIVE LAST CUT TIMER DATA MANAGEMENT WORKSPACE TABLE --- */}
+        {/* Client Cut Timer Configurations Table */}
         <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 space-y-4">
           <h2 className="text-base font-extrabold text-gray-900 flex items-center gap-1.5">⏱️ Client Cut Timer Configurations</h2>
           
@@ -282,7 +282,6 @@ export default function LawnScheduleDashboard() {
             </button>
           </form>
 
-          {/* Active Data Collection Grid Spreadsheet Table view */}
           <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-inner">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -305,13 +304,7 @@ export default function LawnScheduleDashboard() {
                         {t.lastCutAt ? format(new Date(t.lastCutAt), 'PPpp') : 'Invalid Timestamp Rule'}
                       </td>
                       <td className="p-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteTimer(t.id, t.name)}
-                          className="text-rose-600 hover:text-rose-800 font-bold px-2 py-1 rounded hover:bg-rose-50"
-                        >
-                          Purge
-                        </button>
+                        <button type="button" onClick={() => handleDeleteTimer(t.id, t.name)} className="text-rose-600 hover:text-rose-800 font-bold px-2 py-1 rounded hover:bg-rose-50">Purge</button>
                       </td>
                     </tr>
                   ))
@@ -323,7 +316,7 @@ export default function LawnScheduleDashboard() {
 
         {/* Collapsible Vault History */}
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-          <button onClick={() => setIsPastOpen(!isPastOpen)} className="w-full flex items-center justify-between p-2 bg-gray-100 hover:bg-gray-200 transition-colors rounded-lg text-sm font-bold text-gray-700">
+          <button type="button" onClick={() => setIsPastOpen(!isPastOpen)} className="w-full flex items-center justify-between p-2 bg-gray-100 hover:bg-gray-200 transition-colors rounded-lg text-sm font-bold text-gray-700">
             <span>{isPastOpen ? '▼ Hide Past 14 Days (History Workspace)' : '► Show Past 14 Days (History Workspace)'}</span>
             <span className="text-xs text-gray-500 bg-white border px-2 py-0.5 rounded-full shadow-sm font-semibold">{pastDays.length} Days Hidden</span>
           </button>
@@ -351,7 +344,7 @@ export default function LawnScheduleDashboard() {
                 <h3 className="text-lg font-extrabold text-gray-900">Reschedule Appointment</h3>
                 <p className="text-xs font-semibold text-blue-700 mt-0.5">Client: {movingSlot.clientName}</p>
               </div>
-              <button onClick={() => setMovingSlot(null)} className="text-gray-400 hover:text-gray-600 font-bold text-lg p-1">✕</button>
+              <button type="button" onClick={() => setMovingSlot(null)} className="text-gray-400 hover:text-gray-600 font-bold text-lg p-1">✕</button>
             </div>
             <form onSubmit={handleMoveSlotSubmit} className="space-y-4">
               <div>

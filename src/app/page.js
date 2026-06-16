@@ -68,24 +68,69 @@ function SearchableLawnSchedule() {
     return () => clearInterval(internalTimer);
   }, []);
 
-  // 3. Helper logic to calculate custom structured duration object
-  const calculateElapsedTimeObj = (lastCutString) => {
-    if (!lastCutString) return { days: '00', hours: '00', minutes: '00' };
+  // 3. Calculate structured duration object along with color status alerts
+  const getTimerMetrics = (lastCutString, cycleDaysSetting) => {
+    const defaultCycle = cycleDaysSetting ? parseInt(cycleDaysSetting, 10) : 10;
+    
+    if (!lastCutString) {
+      return { 
+        days: '00', hours: '00', minutes: '00', 
+        colorClass: 'bg-gray-900 text-white border-gray-900', labelColor: 'text-gray-400' 
+      };
+    }
+
     const lastCutDate = new Date(lastCutString);
     const totalMinutes = differenceInMinutes(currentTime, lastCutDate);
 
-    if (totalMinutes <= 0) return { days: '00', hours: '00', minutes: '00' };
+    if (totalMinutes <= 0) {
+      return { 
+        days: '00', hours: '00', minutes: '00', 
+        colorClass: 'bg-gray-900 text-white border-gray-900', labelColor: 'text-gray-400' 
+      };
+    }
 
-    const days = Math.floor(totalMinutes / (24 * 60));
+    const elapsedDays = Math.floor(totalMinutes / (24 * 60));
     const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
     const minutes = totalMinutes % 60;
 
     const pad = (num) => String(num).padStart(2, '0');
+
+    // Threshold determinations (Cycle limits match days parsed exactly)
+    const totalMinutesLimit = defaultCycle * 24 * 60;
+    const warningMinutesWindow = (defaultCycle - 2) * 24 * 60;
+
+    let colorClass = 'bg-gray-900 text-white border-gray-900';
+    let labelColor = 'text-gray-400';
+
+    if (totalMinutes >= totalMinutesLimit) {
+      // Overdue status: Red block with white lettering
+      colorClass = 'bg-rose-600 text-white border-rose-600';
+      labelColor = 'text-rose-200';
+    } else if (totalMinutes >= warningMinutesWindow) {
+      // Upcoming warning status: Yellow block with black lettering
+      colorClass = 'bg-amber-400 text-black border-amber-400';
+      labelColor = 'text-gray-900 font-bold';
+    }
+
     return {
-      days: pad(days),
+      days: pad(elapsedDays),
       hours: pad(hours),
-      minutes: pad(minutes)
+      minutes: pad(minutes),
+      colorClass,
+      labelColor
     };
+  };
+
+  // Update a client's cut interval directly from home view
+  const handleUpdateCycle = async (timerId, daysValue) => {
+    try {
+      const timerRef = doc(db, 'timers', timerId);
+      await updateDoc(timerRef, {
+        cycleDays: parseInt(daysValue, 10)
+      });
+    } catch (error) {
+      console.error("Error updating client cycle configuration: ", error);
+    }
   };
 
   const updateSearchParam = (value) => {
@@ -146,7 +191,6 @@ function SearchableLawnSchedule() {
   const pastDays = dateRange.filter(date => isBefore(date, today) && !isSameDay(date, today) && dateMatchesSearch(date));
   const currentAndFutureDays = dateRange.filter(date => (!isBefore(date, today) || isSameDay(date, today)) && dateMatchesSearch(date));
 
-  // Alphabetize active clients listed inside the timer overlay modal
   const alphabetizedTimers = [...timers].sort((a, b) => 
     (a.name || '').localeCompare(b.name || '')
   );
@@ -317,7 +361,7 @@ function SearchableLawnSchedule() {
         </div>
       </div>
 
-      {/* --- REDESIGNED SCROLLABLE TIMER DASHBOARD OVERLAY MODAL --- */}
+      {/* TIMER DASHBOARD OVERLAY MODAL */}
       {isTimerModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[85vh] border border-gray-100 animate-scale-up">
@@ -336,53 +380,70 @@ function SearchableLawnSchedule() {
               </button>
             </div>
 
-            {/* Scrollable Container Wrapper with enhanced styling */}
+            {/* Scrollable Container Wrapper with custom formatting rows */}
             <div className="p-5 overflow-y-auto flex-1 space-y-4 bg-gray-50/30">
               {alphabetizedTimers.length === 0 ? (
                 <p className="text-sm italic text-center text-gray-400 py-12">No client tracker variables configured yet.</p>
               ) : (
                 alphabetizedTimers.map((timer) => {
-                  const timeObj = calculateElapsedTimeObj(timer.lastCutAt);
+                  const currentCycleSetting = timer.cycleDays || 10;
+                  const timeObj = getTimerMetrics(timer.lastCutAt, currentCycleSetting);
                   
                   return (
                     <div 
                       key={timer.id} 
-                      className="p-4 rounded-xl border border-gray-200/60 bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-sm hover:shadow transition-shadow"
+                      className="p-4 rounded-xl border border-gray-200/60 bg-white flex flex-col gap-3 shadow-sm hover:shadow transition-shadow"
                     >
-                      {/* Left: Client Label */}
-                      <span className="font-extrabold text-base text-gray-900 tracking-tight sm:max-w-[180px] break-words">
-                        {timer.name}
-                      </span>
+                      {/* Top Row: Client Name and Cycle Select Option */}
+                      <div className="flex items-center justify-between border-b border-gray-100 pb-2 gap-2">
+                        <span className="font-extrabold text-base text-gray-900 tracking-tight break-words max-w-[240px]">
+                          {timer.name}
+                        </span>
+                        
+                        {/* --- NEW CYCLE (DAYS) INPUT SELECT COMPONENT ROW --- */}
+                        <div className="flex items-center gap-1.5 shrink-0 bg-gray-100 px-2 py-1 rounded-md border border-gray-200">
+                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cycle:</label>
+                          <select
+                            value={currentCycleSetting}
+                            onChange={(e) => handleUpdateCycle(timer.id, e.target.value)}
+                            className="bg-transparent text-xs font-black text-gray-900 focus:outline-none cursor-pointer"
+                          >
+                            {[5, 7, 10, 14, 21, 30].map(d => (
+                              <option key={d} value={d}>{d} Days</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
                       
-                      {/* Right: Redesigned high-contrast countdown blocks */}
-                      <div className="flex items-center gap-1.5 self-start sm:self-center">
+                      {/* Bottom Row: Countdown blocks with dynamic styling overrides */}
+                      <div className="flex items-center gap-1.5 self-end">
                         
                         {/* Days Block */}
                         <div className="flex flex-col items-center">
-                          <div className="bg-gray-900 text-white font-mono text-lg font-black px-3 py-1.5 rounded-lg tracking-wider min-w-[42px] text-center shadow-sm">
+                          <div className={`font-mono text-lg font-black px-3 py-1.5 rounded-lg tracking-wider min-w-[42px] text-center border shadow-sm transition-colors ${timeObj.colorClass}`}>
                             {timeObj.days}
                           </div>
-                          <span className="text-[10px] text-gray-400 font-extrabold uppercase mt-1 tracking-wider">Days</span>
+                          <span className={`text-[10px] font-extrabold uppercase mt-1 tracking-wider ${timeObj.labelColor}`}>Days</span>
                         </div>
 
-                        <span className="text-gray-400 font-black text-lg mb-4">:</span>
+                        <span className="text-gray-300 font-black text-lg mb-4">:</span>
 
                         {/* Hours Block */}
                         <div className="flex flex-col items-center">
-                          <div className="bg-gray-900 text-white font-mono text-lg font-black px-3 py-1.5 rounded-lg tracking-wider min-w-[42px] text-center shadow-sm">
+                          <div className={`font-mono text-lg font-black px-3 py-1.5 rounded-lg tracking-wider min-w-[42px] text-center border shadow-sm transition-colors ${timeObj.colorClass}`}>
                             {timeObj.hours}
                           </div>
-                          <span className="text-[10px] text-gray-400 font-extrabold uppercase mt-1 tracking-wider">Hrs</span>
+                          <span className={`text-[10px] font-extrabold uppercase mt-1 tracking-wider ${timeObj.labelColor}`}>Hrs</span>
                         </div>
 
-                        <span className="text-gray-400 font-black text-lg mb-4">:</span>
+                        <span className="text-gray-300 font-black text-lg mb-4">:</span>
 
                         {/* Minutes Block */}
                         <div className="flex flex-col items-center">
-                          <div className="bg-gray-900 text-white font-mono text-lg font-black px-3 py-1.5 rounded-lg tracking-wider min-w-[42px] text-center shadow-sm">
+                          <div className={`font-mono text-lg font-black px-3 py-1.5 rounded-lg tracking-wider min-w-[42px] text-center border shadow-sm transition-colors ${timeObj.colorClass}`}>
                             {timeObj.minutes}
                           </div>
-                          <span className="text-[10px] text-gray-400 font-extrabold uppercase mt-1 tracking-wider">Mins</span>
+                          <span className={`text-[10px] font-extrabold uppercase mt-1 tracking-wider ${timeObj.labelColor}`}>Mins</span>
                         </div>
 
                       </div>
@@ -392,11 +453,11 @@ function SearchableLawnSchedule() {
               )}
             </div>
 
-            {/* Modal Footer Footer */}
+            {/* Modal Footer */}
             <div className="p-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex">
               <button
                 onClick={() => setIsTimerModalOpen(false)}
-                className="w-full bg-emerald-700 text-white font-bold text-sm py-3 rounded-xl hover:bg-emerald-800 shadow-md transition-all active:scale-[0.98]"
+                className="w-full bg-emerald-700 text-white font-bold text-sm py-3 rounded-xl hover:bg-emerald-800 shadow-md transition-all"
               >
                 Close Monitor
               </button>

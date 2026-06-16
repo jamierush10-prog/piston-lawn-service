@@ -13,7 +13,7 @@ function SearchableLawnSchedule() {
   // Booking & App States
   const [slots, setSlots] = useState([]);
   const [dayConfigs, setDayConfigs] = useState([]); 
-  const [timers, setTimers] = useState([]); // Real-time client timers stream
+  const [timers, setTimers] = useState([]); 
   const [loading, setLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [bookingSuccess, setBookingSuccess] = useState(false);
@@ -60,28 +60,32 @@ function SearchableLawnSchedule() {
     };
   }, []);
 
-  // 2. Keep counters accurate by updating minute variables live
+  // 2. Keep counters accurate by updating variables live
   useEffect(() => {
     const internalTimer = setInterval(() => {
       setCurrentTime(new Date());
-    }, 60000); // Ticks every 60 seconds
+    }, 60000);
     return () => clearInterval(internalTimer);
   }, []);
 
-  // 3. Helper logic to calculate custom DD:HH:MM elapsed duration string
-  const calculateElapsedTime = (lastCutString) => {
-    if (!lastCutString) return '00:00:00';
+  // 3. Helper logic to calculate custom structured duration object
+  const calculateElapsedTimeObj = (lastCutString) => {
+    if (!lastCutString) return { days: '00', hours: '00', minutes: '00' };
     const lastCutDate = new Date(lastCutString);
     const totalMinutes = differenceInMinutes(currentTime, lastCutDate);
 
-    if (totalMinutes <= 0) return '00:00:00';
+    if (totalMinutes <= 0) return { days: '00', hours: '00', minutes: '00' };
 
     const days = Math.floor(totalMinutes / (24 * 60));
     const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
     const minutes = totalMinutes % 60;
 
     const pad = (num) => String(num).padStart(2, '0');
-    return `${pad(days)}d : ${pad(hours)}h : ${pad(minutes)}m`;
+    return {
+      days: pad(days),
+      hours: pad(hours),
+      minutes: pad(minutes)
+    };
   };
 
   const updateSearchParam = (value) => {
@@ -249,11 +253,10 @@ function SearchableLawnSchedule() {
         <p className="text-emerald-100 text-lg mt-2 font-semibold">Call or Text: (251) 316-1698</p>
         <p className="text-emerald-200/80 text-sm mt-1 font-medium">View our schedule & reserve your lawn care slot instantly below.</p>
         
-        {/* NEW: Standalone Interactive Timer Dashboard Launcher Button */}
         <div className="mt-4 flex justify-center">
           <button
             onClick={() => setIsTimerModalOpen(true)}
-            className="bg-white text-emerald-800 font-bold px-4 py-2 rounded-full shadow hover:bg-emerald-50 transition text-xs flex items-center gap-1.5"
+            className="bg-white text-emerald-800 font-bold px-4 py-2 rounded-full shadow-lg hover:bg-emerald-50 transition text-xs flex items-center gap-1.5"
           >
             ⏱️ View Days Since Last Cut
           </button>
@@ -314,38 +317,86 @@ function SearchableLawnSchedule() {
         </div>
       </div>
 
-      {/* --- NEW SCROLLABLE CLIENT TIME TRACKER OVERLAY MODAL --- */}
+      {/* --- REDESIGNED SCROLLABLE TIMER DASHBOARD OVERLAY MODAL --- */}
       {isTimerModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col max-h-[80vh] border border-gray-100 animate-scale-up">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[85vh] border border-gray-100 animate-scale-up">
+            
+            {/* Modal Header */}
             <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-2xl">
               <div>
-                <h3 className="text-lg font-extrabold text-gray-900">Lawn Growth Monitor</h3>
-                <p className="text-xs font-semibold text-gray-500">Live duration since your last completed cut</p>
+                <h3 className="text-xl font-extrabold text-gray-900 tracking-tight">Lawn Growth Monitor</h3>
+                <p className="text-xs font-semibold text-gray-500 mt-0.5">Live running durations since last cut</p>
               </div>
-              <button onClick={() => setIsTimerModalOpen(false)} className="text-gray-400 hover:text-gray-600 font-bold text-lg p-2">✕</button>
+              <button 
+                onClick={() => setIsTimerModalOpen(false)} 
+                className="text-gray-400 hover:text-gray-700 transition font-bold text-xl p-2 rounded-full hover:bg-gray-200/50 flex items-center justify-center h-9 w-9"
+              >
+                ✕
+              </button>
             </div>
 
-            {/* Scrollable Container Wrapper */}
-            <div className="p-5 overflow-y-auto flex-1 space-y-3 bg-white">
+            {/* Scrollable Container Wrapper with enhanced styling */}
+            <div className="p-5 overflow-y-auto flex-1 space-y-4 bg-gray-50/30">
               {alphabetizedTimers.length === 0 ? (
-                <p className="text-sm italic text-center text-gray-400 py-6">No client tracker variables configured yet.</p>
+                <p className="text-sm italic text-center text-gray-400 py-12">No client tracker variables configured yet.</p>
               ) : (
-                alphabetizedTimers.map((timer) => (
-                  <div key={timer.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50/50 flex items-center justify-between gap-2 shadow-sm">
-                    <span className="font-bold text-sm text-gray-800">{timer.name}</span>
-                    <span className="font-mono text-xs font-bold text-white bg-gray-900 px-3 py-1 rounded-md tracking-wider shadow-sm">
-                      {calculateElapsedTime(timer.lastCutAt)}
-                    </span>
-                  </div>
-                ))
+                alphabetizedTimers.map((timer) => {
+                  const timeObj = calculateElapsedTimeObj(timer.lastCutAt);
+                  
+                  return (
+                    <div 
+                      key={timer.id} 
+                      className="p-4 rounded-xl border border-gray-200/60 bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-sm hover:shadow transition-shadow"
+                    >
+                      {/* Left: Client Label */}
+                      <span className="font-extrabold text-base text-gray-900 tracking-tight sm:max-w-[180px] break-words">
+                        {timer.name}
+                      </span>
+                      
+                      {/* Right: Redesigned high-contrast countdown blocks */}
+                      <div className="flex items-center gap-1.5 self-start sm:self-center">
+                        
+                        {/* Days Block */}
+                        <div className="flex flex-col items-center">
+                          <div className="bg-gray-900 text-white font-mono text-lg font-black px-3 py-1.5 rounded-lg tracking-wider min-w-[42px] text-center shadow-sm">
+                            {timeObj.days}
+                          </div>
+                          <span className="text-[10px] text-gray-400 font-extrabold uppercase mt-1 tracking-wider">Days</span>
+                        </div>
+
+                        <span className="text-gray-400 font-black text-lg mb-4">:</span>
+
+                        {/* Hours Block */}
+                        <div className="flex flex-col items-center">
+                          <div className="bg-gray-900 text-white font-mono text-lg font-black px-3 py-1.5 rounded-lg tracking-wider min-w-[42px] text-center shadow-sm">
+                            {timeObj.hours}
+                          </div>
+                          <span className="text-[10px] text-gray-400 font-extrabold uppercase mt-1 tracking-wider">Hrs</span>
+                        </div>
+
+                        <span className="text-gray-400 font-black text-lg mb-4">:</span>
+
+                        {/* Minutes Block */}
+                        <div className="flex flex-col items-center">
+                          <div className="bg-gray-900 text-white font-mono text-lg font-black px-3 py-1.5 rounded-lg tracking-wider min-w-[42px] text-center shadow-sm">
+                            {timeObj.minutes}
+                          </div>
+                          <span className="text-[10px] text-gray-400 font-extrabold uppercase mt-1 tracking-wider">Mins</span>
+                        </div>
+
+                      </div>
+                    </div>
+                  );
+                })
               )}
             </div>
 
+            {/* Modal Footer Footer */}
             <div className="p-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex">
               <button
                 onClick={() => setIsTimerModalOpen(false)}
-                className="w-full bg-emerald-700 text-white font-bold text-sm py-2 rounded-xl hover:bg-emerald-800 shadow-sm transition"
+                className="w-full bg-emerald-700 text-white font-bold text-sm py-3 rounded-xl hover:bg-emerald-800 shadow-md transition-all active:scale-[0.98]"
               >
                 Close Monitor
               </button>

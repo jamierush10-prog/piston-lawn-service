@@ -119,13 +119,11 @@ function SearchableLawnSchedule() {
     };
   };
 
-  // NEW: Calculate the exact day of the week and target date the current cycle will land on
-  const getNextTargetDueDateLabel = (lastCutString, cycleDaysSetting) => {
-    if (!lastCutString) return 'No previous date set';
+  // Helper to project future deadline dates
+  const getNextTargetDueDate = (lastCutString, cycleDaysSetting) => {
+    if (!lastCutString) return new Date(0); // Pushes invalid metrics downward
     const defaultCycle = cycleDaysSetting ? parseInt(cycleDaysSetting, 10) : 10;
-    const lastCutDate = new Date(lastCutString);
-    const nextDueDate = addDays(lastCutDate, defaultCycle);
-    return format(nextDueDate, 'EEEE, MMM d, yyyy');
+    return addDays(new Date(lastCutString), defaultCycle);
   };
 
   // Update a client's cut interval directly from home view
@@ -198,9 +196,12 @@ function SearchableLawnSchedule() {
   const pastDays = dateRange.filter(date => isBefore(date, today) && !isSameDay(date, today) && dateMatchesSearch(date));
   const currentAndFutureDays = dateRange.filter(date => (!isBefore(date, today) || isSameDay(date, today)) && dateMatchesSearch(date));
 
-  const alphabetizedTimers = [...timers].sort((a, b) => 
-    (a.name || '').localeCompare(b.name || '')
-  );
+  // --- FIXED: Sort timers chronologically by calculated Target Due Date (Earliest on top) ---
+  const sortedTimersByDueDate = [...timers].sort((a, b) => {
+    const dateA = getNextTargetDueDate(a.lastCutAt, a.cycleDays);
+    const dateB = getNextTargetDueDate(b.lastCutAt, b.cycleDays);
+    return dateA - dateB;
+  });
 
   const renderDayRow = (date) => {
     const dateKey = format(date, 'yyyy-MM-dd');
@@ -377,7 +378,7 @@ function SearchableLawnSchedule() {
             <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-2xl">
               <div>
                 <h3 className="text-xl font-extrabold text-gray-900 tracking-tight">Lawn Growth Monitor</h3>
-                <p className="text-xs font-semibold text-gray-500 mt-0.5">Live running durations since last cut</p>
+                <p className="text-xs font-semibold text-gray-500 mt-0.5">Live running durations sorted by urgency</p>
               </div>
               <button 
                 onClick={() => setIsTimerModalOpen(false)} 
@@ -387,34 +388,33 @@ function SearchableLawnSchedule() {
               </button>
             </div>
 
-            {/* Scrollable Container Wrapper with custom formatting rows */}
+            {/* Scrollable Container Wrapper with chronologically sorted rows */}
             <div className="p-5 overflow-y-auto flex-1 space-y-4 bg-gray-50/30">
-              {alphabetizedTimers.length === 0 ? (
+              {sortedTimersByDueDate.length === 0 ? (
                 <p className="text-sm italic text-center text-gray-400 py-12">No client tracker variables configured yet.</p>
               ) : (
-                alphabetizedTimers.map((timer) => {
+                sortedTimersByDueDate.map((timer) => {
                   const currentCycleSetting = timer.cycleDays || 10;
                   const timeObj = getTimerMetrics(timer.lastCutAt, currentCycleSetting);
-                  const targetDueDateLabel = getNextTargetDueDateLabel(timer.lastCutAt, currentCycleSetting);
+                  const targetDueDateLabel = format(getNextTargetDueDate(timer.lastCutAt, currentCycleSetting), 'EEEE, MMM d, yyyy');
                   
                   return (
                     <div 
                       key={timer.id} 
                       className="p-4 rounded-xl border border-gray-200/60 bg-white flex flex-col gap-3 shadow-sm hover:shadow transition-shadow"
                     >
-                      {/* Top Row: Client Name, Due Date Projection, and Cycle Select Option */}
+                      {/* Top Row: Client Name, Projected Target Due Date, and Cycle Option */}
                       <div className="flex items-start justify-between border-b border-gray-100 pb-2.5 gap-4">
                         <div className="space-y-1">
                           <span className="font-extrabold text-base text-gray-900 tracking-tight block leading-tight">
                             {timer.name}
                           </span>
-                          {/* --- NEW TARGET DUE DATE SUB-LABEL PLACEMENT --- */}
                           <span className="text-xs font-semibold text-emerald-700 bg-emerald-50/70 px-2 py-0.5 rounded inline-block">
                             📅 Target Due: {targetDueDateLabel}
                           </span>
                         </div>
                         
-                        {/* Cycle Selector Input */}
+                        {/* Cycle Input */}
                         <div className="flex items-center gap-1.5 shrink-0 bg-gray-100 px-2.5 py-1 rounded-md border border-gray-200 mt-0.5">
                           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cycle:</label>
                           <select
@@ -429,7 +429,7 @@ function SearchableLawnSchedule() {
                         </div>
                       </div>
                       
-                      {/* Bottom Row: Countdown blocks with dynamic styling overrides */}
+                      {/* Bottom Row: Countdown Blocks */}
                       <div className="flex items-center gap-1.5 self-end mt-1">
                         
                         {/* Days Block */}
@@ -467,7 +467,7 @@ function SearchableLawnSchedule() {
               )}
             </div>
 
-            {/* Modal Footer */}
+            {/* Modal Close Footer */}
             <div className="p-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex">
               <button
                 onClick={() => setIsTimerModalOpen(false)}
